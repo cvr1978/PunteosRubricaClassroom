@@ -3,141 +3,105 @@
 Herramienta para generar reportes de calificaciones combinando el archivo de
 Google Classroom con el desglose de criterios de rúbrica.
 
-**Resultado:** Un archivo Excel con:
-- Actividades **sin rúbrica** → columna con el punteo directo
-- Actividades **con rúbrica** → columnas por cada criterio + columna de total
+**Resultado:** Una hoja de Google Sheets con:
+- Actividades **sin rúbrica** → columna con el punteo directo (azul)
+- Actividades **con rúbrica** → columnas por cada criterio + columna de total (verde)
 
 ---
 
-## Requisitos
+## Cómo usar (versión Google Sheets — sin instalar nada)
 
-```
-pip install -r requirements.txt
-```
+### 1. Preparar el script
 
-Requiere Python 3.8 o superior.
+1. Abre **[Google Sheets](https://sheets.google.com)** y crea una hoja nueva.
+2. En el menú ve a **Extensiones → Apps Script**.
+3. Borra todo el código que aparece por defecto.
+4. Copia el contenido del archivo **`Code.gs`** de este repositorio y pégalo.
+5. Haz clic en **Guardar** (ícono de disquete o Ctrl+S).
+6. Cierra la pestaña de Apps Script y **recarga** la hoja de Google Sheets.
+7. Aparecerá un nuevo menú llamado **"Rúbricas Classroom"** en la barra de menús.
 
----
-
-## Flujo de uso (3 pasos)
-
-### Paso 1 — Generar la plantilla de configuración
-
-```bash
-python procesar.py plantilla  <archivo_classroom.csv>
-```
-
-Ejemplo:
-```bash
-python procesar.py plantilla  "Calificaciones PROG1 4PAA.csv"
-```
-
-Genera `plantilla_rubricas.xlsx` con:
-- **Hoja `Configuracion`**: lista de todas las actividades del curso.
-  - Llena la columna **"¿Tiene Rúbrica?"** con `SÍ` o `NO`.
-  - Para las que tienen rúbrica, escribe el nombre de cada criterio y su punteo máximo.
-
-> **Ejemplo de cómo llenar:**
->
-> | Actividad              | Máx. Pts | ¿Tiene Rúbrica? | Criterio 1   | Máx C1 | Criterio 2 | Máx C2 | Criterio 3   | Máx C3 |
-> |------------------------|----------|-----------------|--------------|--------|------------|--------|--------------|--------|
-> | ACTIVIDAD UNO UNIDAD…  | 15       | SÍ              | Puntualidad  | 5      | Contenido  | 5      | Presentación | 5      |
-> | ASPECTOS UNIDAD UNO    | 10       | SÍ              | Presentación | 3      | Dominio    | 4      | Participación| 3      |
-> | TAREAS EN CLASE…       | 15       | NO              |              |        |            |        |              |        |
-
-Guarda el archivo después de llenar.
+> La primera vez que ejecutes cualquier paso, Google te pedirá autorizar el
+> script. Haz clic en **"Revisar permisos"** → selecciona tu cuenta → **"Avanzado"**
+> → **"Ir a [nombre del proyecto] (no seguro)"** → **"Permitir"**.
 
 ---
 
-### Paso 2 — Generar hojas de ingreso de punteos
+### Paso 1 — Importar CSV de Classroom
 
-```bash
-python procesar.py datos  <archivo_classroom.csv>  <plantilla_rubricas.xlsx>
-```
+1. En Google Classroom abre el curso, ve a **Calificaciones** y descarga el CSV.
+2. Abre el archivo CSV con el **Bloc de notas** (clic derecho → "Abrir con" → Bloc de notas).
+3. Selecciona todo (Ctrl+A), copia (Ctrl+C).
+4. En la hoja de Google Sheets, ve al menú **Rúbricas Classroom → Paso 1: Importar CSV**.
+5. Pega el contenido en el cuadro que aparece y haz clic en **Importar**.
 
-Ejemplo:
-```bash
-python procesar.py datos  "Calificaciones PROG1 4PAA.csv"  plantilla_rubricas.xlsx
-```
+---
 
-Agrega una hoja por cada actividad con rúbrica. Cada hoja muestra:
-- Nombre y email del estudiante (ya llenado)
+### Paso 2 — Generar Plantilla de Rúbricas
+
+Ve al menú **Rúbricas Classroom → Paso 2: Generar Plantilla**.
+
+Se crea la hoja **PLANTILLA** con todas las actividades del curso. Para cada actividad:
+
+- En la columna **"¿Tiene Rúbrica?"** selecciona **SI** o **NO**.
+- Para las que tienen rúbrica, rellena los criterios en las **celdas amarillas**:
+
+| Actividad             | Máx. Pts | ¿Tiene Rúbrica? | Criterio 1  | Máx C1 | Criterio 2 | Máx C2 | Criterio 3   | Máx C3 |
+|-----------------------|----------|-----------------|-------------|--------|------------|--------|--------------|--------|
+| ACTIVIDAD UNO…        | 15       | SI              | Puntualidad | 5      | Contenido  | 5      | Presentación | 5      |
+| ASPECTOS UNIDAD UNO   | 10       | SI              | Presentación| 3      | Dominio    | 4      | Participación| 3      |
+| TAREAS EN CLASE…      | 15       | NO              |             |        |            |        |              |        |
+
+---
+
+### Paso 3 — Crear Hojas de Punteos
+
+Ve al menú **Rúbricas Classroom → Paso 3: Crear Hojas de Punteos**.
+
+Se crea una hoja **RUB_[nombre de la actividad]** por cada actividad marcada con SI.
+Cada hoja tiene:
+- Lista de estudiantes ya cargada
 - **Celdas amarillas** para ingresar el punteo de cada criterio
-- Columna **TOTAL** calculada automáticamente con la suma
+- Columna **TOTAL** que se calcula automáticamente
 
-Ingresa los punteos de cada criterio para cada estudiante. Guarda el archivo.
+Ingresa los puntajes y cuando termines pasa al paso 4.
 
 ---
 
-### Paso 3 — Generar el reporte final
+### Paso 4 — Generar Reporte Final
 
-```bash
-python procesar.py reporte  <archivo_classroom.csv>  <plantilla_rubricas.xlsx>
+Ve al menú **Rúbricas Classroom → Paso 4: Generar Reporte Final**.
+
+Se crea la hoja **REPORTE** con todo consolidado:
+
 ```
-
-Ejemplo:
-```bash
-python procesar.py reporte  "Calificaciones PROG1 4PAA.csv"  plantilla_rubricas.xlsx
-```
-
-Genera `reporte_final.xlsx` con:
-- Todas las actividades en columnas
-- Las actividades con rúbrica muestran cada criterio + el total (en verde)
-- Las actividades sin rúbrica muestran el punteo directo de Classroom
-- Encabezado con nombre del curso y sección
-
-Para guardar con otro nombre:
-```bash
-python procesar.py reporte  "Calificaciones PROG1 4PAA.csv"  plantilla_rubricas.xlsx  "Reporte_4PAA_Marzo.xlsx"
+┌──────────┬──────────┬──────────┬──────┬──────────────────────┬──────┬─────────────────────┐
+│ Apellido │ Nombre   │ Email    │  %   │  ACTIVIDAD UNO               │  ASPECTOS UNO        │
+│          │          │          │      │ Puntual│Cont.│Pres.│TOTAL│Directo│Pres.│Dom.│Part.│TOTAL│
+├──────────┼──────────┼──────────┼──────┼────────┼─────┼─────┼─────┼───────┼─────┼────┼─────┼─────┤
+│ NÁJERA   │ ANDREA   │ ...      │ 74%  │   5    │  4  │  5  │ 14  │   9   │  3  │ 3  │  1  │  7  │
+└──────────┴──────────┴──────────┴──────┴────────┴─────┴─────┴─────┴───────┴─────┴────┴─────┴─────┘
+  Columnas azules = puntaje directo   |   Columnas verdes = criterios de rúbrica + total
 ```
 
 ---
 
-## Un curso por archivo
+## Un curso por hoja
 
-Classroom exporta un CSV por curso y sección. Para procesar varios cursos,
-repite los 3 pasos con cada archivo. Puedes nombrar las plantillas según el
-curso para organizarlas:
-
-```
-plantilla_rubricas_PROG1_4PAA.xlsx
-plantilla_rubricas_PROG1_4PAB.xlsx
-plantilla_rubricas_PROG2_5BACHA.xlsx
-...
-```
+Classroom exporta un CSV por curso/sección. Para manejar varios cursos,
+crea una hoja de Google Sheets diferente para cada uno y repite los 4 pasos.
 
 ---
 
-## Archivo de ejemplo
+## Versión Python (alternativa sin Google Sheets)
 
-En la carpeta `datos_ejemplo/` encontrarás:
+Si prefieres trabajar localmente con Excel, el archivo `procesar.py` hace
+lo mismo desde la terminal. Requiere Python 3.8+ y las librerías de
+`requirements.txt`.
 
-- `classroom_prog1_4PAA.csv` — archivo de muestra basado en el formato real
-  de Google Classroom (PROGRAMACIÓN UNO 4PAA)
-
-Para probar:
 ```bash
-python procesar.py plantilla datos_ejemplo/classroom_prog1_4PAA.csv
-# → Llena plantilla_rubricas.xlsx
-python procesar.py datos    datos_ejemplo/classroom_prog1_4PAA.csv plantilla_rubricas.xlsx
-# → Ingresa punteos en las hojas amarillas
-python procesar.py reporte  datos_ejemplo/classroom_prog1_4PAA.csv plantilla_rubricas.xlsx
-# → Abre reporte_final.xlsx
-```
-
----
-
-## Estructura del reporte final
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  REPORTE DE CALIFICACIONES — PROGRAMACIÓN UNO    4PAA                       │
-├──────────┬──────────┬──────────┬────┬──────────────────────┬─────┬──────────┤
-│ Apellido │ Nombre   │ Email    │ %  │  ACTIVIDAD UNO       │ACT2 │ASPECTOS  │
-│          │          │          │    │ Puntual│Content│Pres│Total│     │Pres│Dom│Part│Total│
-├──────────┼──────────┼──────────┼────┼────────┼───────┼────┼─────┼─────┼────┼───┼────┼─────┤
-│ NÁJERA   │ ANDREA   │ ...      │74% │   5    │   4   │  5 │ 14  │  9  │ 3  │ 3 │ 1  │  7  │
-│ SALGUERO │ ANGEL    │ ...      │78% │   4    │   5   │  5 │ 14  │  9  │ 2  │ 3 │ 2  │  7  │
-└──────────┴──────────┴──────────┴────┴────────┴───────┴────┴─────┴─────┴────┴───┴────┴─────┘
-  Columnas azules = sin rúbrica   |   Columnas verdes = con rúbrica (criterios + total)
+pip install -r requirements.txt
+python procesar.py plantilla  datos_ejemplo/classroom_prog1_4PAA.csv
+python procesar.py datos      datos_ejemplo/classroom_prog1_4PAA.csv  plantilla_rubricas.xlsx
+python procesar.py reporte    datos_ejemplo/classroom_prog1_4PAA.csv  plantilla_rubricas.xlsx
 ```
