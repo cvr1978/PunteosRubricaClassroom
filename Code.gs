@@ -133,21 +133,26 @@ function importarCurso(courseId, courseLabel) {
     // Submissions de todos los estudiantes
     var subs = obtenerSubmissions(courseId, cw.id);
 
+    // Mapa de fallback: si rubricGrades.points es null, buscar puntos por levelId
+    var mapaNiveles = construirMapaNiveles(rubrica);
+
     // Guardar metadata de la actividad
     actividades.push({
-      id:          cw.id,
-      nombre:      cw.title || '',
-      fecha:       formatFecha(cw.dueDate),
-      maxPts:      cw.maxPoints || 0,
+      id:           cw.id,
+      nombre:       cw.title || '',
+      fecha:        formatFecha(cw.dueDate),
+      maxPts:       cw.maxPoints || 0,
       tieneRubrica: criterios.length > 0,
-      criterios:   criterios          // [{id, nombre, max}]
+      criterios:    criterios          // [{id, nombre, max}]
     });
 
     // Guardar punteos por estudiante
     for (var j = 0; j < subs.length; j++) {
       var sub   = subs[j];
-      var total = sub.assignedGrade !== undefined ? sub.assignedGrade
-                : (sub.draftGrade   !== undefined ? sub.draftGrade : '');
+      var total = sub.assignedGrade !== undefined && sub.assignedGrade !== null
+                    ? sub.assignedGrade
+                    : (sub.draftGrade !== undefined && sub.draftGrade !== null
+                        ? sub.draftGrade : '');
 
       var filaPunteo = [cw.id, sub.userId, total];
 
@@ -156,12 +161,18 @@ function importarCurso(courseId, courseLabel) {
         var mapaGrades = {};
         if (sub.rubricGrades) {
           for (var k = 0; k < sub.rubricGrades.length; k++) {
-            mapaGrades[sub.rubricGrades[k].criterionId] = sub.rubricGrades[k].points;
+            var rg  = sub.rubricGrades[k];
+            var pts = rg.points;
+            // Fallback: si points es null, obtener desde el nivel seleccionado
+            if ((pts === null || pts === undefined) && rg.levelId && mapaNiveles[rg.criterionId]) {
+              pts = mapaNiveles[rg.criterionId][rg.levelId];
+            }
+            mapaGrades[rg.criterionId] = (pts !== null && pts !== undefined) ? pts : '';
           }
         }
         for (var k = 0; k < criterios.length; k++) {
-          var pts = mapaGrades[criterios[k].id];
-          filaPunteo.push(pts !== undefined ? pts : '');
+          var val = mapaGrades.hasOwnProperty(criterios[k].id) ? mapaGrades[criterios[k].id] : '';
+          filaPunteo.push(val);
         }
       }
 
@@ -233,15 +244,29 @@ function obtenerRubrica(courseId, courseWorkId) {
   }
 }
 
+// Usamos UrlFetchApp porque el servicio avanzado de Apps Script no siempre
+// incluye rubricGrades en la respuesta. Con fields explícito sí viene.
 function obtenerSubmissions(courseId, courseWorkId) {
-  var lista = [], pageToken;
+  var lista     = [];
+  var pageToken = null;
+  var token     = ScriptApp.getOAuthToken();
+  var baseUrl   = 'https://classroom.googleapis.com/v1/courses/' + courseId +
+                  '/courseWork/' + courseWorkId + '/studentSubmissions' +
+                  '?pageSize=100' +
+                  '&fields=nextPageToken,studentSubmissions(userId,assignedGrade,draftGrade,rubricGrades)';
+
   do {
-    var p   = { pageSize: 200 };
-    if (pageToken) p.pageToken = pageToken;
-    var res = Classroom.Courses.CourseWork.StudentSubmissions.list(courseId, courseWorkId, p);
-    if (res.studentSubmissions) lista = lista.concat(res.studentSubmissions);
-    pageToken = res.nextPageToken;
+    var url = baseUrl + (pageToken ? '&pageToken=' + encodeURIComponent(pageToken) : '');
+    var res = UrlFetchApp.fetch(url, {
+      headers: { 'Authorization': 'Bearer ' + token },
+      muteHttpExceptions: true
+    });
+    var data = JSON.parse(res.getContentText());
+    if (data.error) throw new Error(data.error.message);
+    if (data.studentSubmissions) lista = lista.concat(data.studentSubmissions);
+    pageToken = data.nextPageToken || null;
   } while (pageToken);
+
   return lista;
 }
 
@@ -258,6 +283,23 @@ function parsearCriterios(rubrica) {
     }
     return { id: c.id, nombre: c.title || '', max: maxPts };
   });
+}
+
+// Construye mapa { criterionId → { levelId → points } }
+// Se usa como fallback cuando rubricGrades.points es null pero levelId sí tiene valor.
+function construirMapaNiveles(rubrica) {
+  var mapa = {};
+  if (!rubrica || !rubrica.criteria) return mapa;
+  for (var i = 0; i < rubrica.criteria.length; i++) {
+    var c = rubrica.criteria[i];
+    mapa[c.id] = {};
+    if (c.levels) {
+      for (var j = 0; j < c.levels.length; j++) {
+        mapa[c.id][c.levels[j].id] = parseFloat(c.levels[j].points) || 0;
+      }
+    }
+  }
+  return mapa;
 }
 
 // ============================================================
@@ -452,18 +494,20 @@ function generarReporte() {
   var FILA_H   = 4;
   var totalCols = FIJOS + cols.length;
 
-  // ── Fila 1: título ───────────────────────────────────────
-  hojaRep.getRange(1, 1, 1, totalCols).merge()
+  // ── Filas 1-2: título (sin merge para evitar conflicto con freeze) ──────────
+  // Pintamos toda la fila pero no fusionamos para que setFrozenColumns funcione.
+  hojaRep.getRange(1, 1, 1, totalCols)
+    .setBackground(C_AZUL_OSC).setFontColor('#FFFFFF');
+  hojaRep.getRange(1, 1)
     .setValue('Reporte de Calificaciones — ' + datos.courseLabel)
     .setFontSize(13).setFontWeight('bold')
-    .setBackground(C_AZUL_OSC).setFontColor('#FFFFFF')
-    .setHorizontalAlignment('center').setVerticalAlignment('middle');
+    .setHorizontalAlignment('left').setVerticalAlignment('middle');
   hojaRep.setRowHeight(1, 30);
 
-  // ── Fila 2: fecha de actualización ───────────────────────
-  hojaRep.getRange(2, 1, 1, totalCols).merge()
+  hojaRep.getRange(2, 1, 1, totalCols).setBackground('#FAFAFA');
+  hojaRep.getRange(2, 1)
     .setValue('Sincronizado desde Google Classroom: ' + new Date().toLocaleString('es-GT'))
-    .setFontSize(10).setFontStyle('italic').setFontColor('#888888').setBackground('#FAFAFA');
+    .setFontSize(10).setFontStyle('italic').setFontColor('#888888');
   hojaRep.setRowHeight(2, 18);
 
   // ── Fila 4: encabezados ───────────────────────────────────
