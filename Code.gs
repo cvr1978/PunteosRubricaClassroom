@@ -32,6 +32,8 @@ function onOpen() {
     .addItem('2.  Generar Reporte Final',            'generarReporte')
     .addSeparator()
     .addItem('Sincronizar de nuevo (mismo curso)',   'sincronizarDenuevo')
+    .addSeparator()
+    .addItem('[Debug] Ver JSON de la API',            'debugVerAPI')
     .addItem('Instrucciones',                        'mostrarInstrucciones')
     .addToUi();
 }
@@ -633,6 +635,93 @@ function sincronizarDenuevo() {
   } catch (e) {
     ui.alert('Error al sincronizar: ' + e.message);
   }
+}
+
+// ============================================================
+// DEBUG — Ver JSON crudo de la API
+// ============================================================
+
+function debugVerAPI() {
+  var ui = SpreadsheetApp.getUi();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  var hojaD = ss.getSheetByName(H_DATOS);
+  if (!hojaD) { ui.alert('Primero importa un curso (Paso 1).'); return; }
+
+  var fila1    = hojaD.getRange(1, 1, 1, 3).getValues()[0];
+  var courseId = String(fila1[1]).trim();
+  if (!courseId) { ui.alert('No se encontró el ID del curso en _DATOS.'); return; }
+
+  // Buscar la primera actividad que tenga rúbrica
+  var works = obtenerActividades(courseId);
+  var cwTarget = null;
+  var rubricaTarget = null;
+  for (var i = 0; i < works.length; i++) {
+    var r = obtenerRubrica(courseId, works[i].id);
+    if (r) { cwTarget = works[i]; rubricaTarget = r; break; }
+  }
+  if (!cwTarget) { ui.alert('No se encontró ninguna actividad con rúbrica en este curso.'); return; }
+
+  var token = ScriptApp.getOAuthToken();
+
+  // 1. Obtener submissions via LIST (sin fields filter)
+  var urlList = 'https://classroom.googleapis.com/v1/courses/' +
+                encodeURIComponent(courseId) + '/courseWork/' +
+                encodeURIComponent(cwTarget.id) + '/studentSubmissions?pageSize=3';
+  var resList = UrlFetchApp.fetch(urlList, {
+    headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true
+  });
+  var dataList = JSON.parse(resList.getContentText());
+  var primeros = (dataList.studentSubmissions || []).slice(0, 2);
+
+  // 2. Obtener el primer submission via GET individual
+  var getIndividual = '';
+  if (primeros.length > 0) {
+    var urlGet = 'https://classroom.googleapis.com/v1/courses/' +
+                 encodeURIComponent(courseId) + '/courseWork/' +
+                 encodeURIComponent(cwTarget.id) + '/studentSubmissions/' +
+                 encodeURIComponent(primeros[0].id);
+    var resGet = UrlFetchApp.fetch(urlGet, {
+      headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true
+    });
+    getIndividual = resGet.getContentText();
+  }
+
+  // Escribir todo en hoja _DEBUG
+  var hojaDbg = ss.getSheetByName('_DEBUG');
+  if (hojaDbg) ss.deleteSheet(hojaDbg);
+  hojaDbg = ss.insertSheet('_DEBUG');
+
+  var filas = [
+    ['=== DIAGNÓSTICO rubricGrades ==='],
+    ['Actividad:', cwTarget.title],
+    ['CourseWork ID:', cwTarget.id],
+    [''],
+    ['--- Rúbrica (criteria) ---'],
+    [JSON.stringify(rubricaTarget.criteria || [], null, 2)],
+    [''],
+    ['--- LIST /studentSubmissions (primeras 2) ---'],
+  ];
+  for (var i = 0; i < primeros.length; i++) {
+    filas.push(['Submission ' + (i+1) + ':']);
+    filas.push([JSON.stringify(primeros[i], null, 2)]);
+    filas.push(['']);
+  }
+  filas.push(['--- GET individual (submission[0]) ---']);
+  filas.push([getIndividual]);
+
+  for (var r = 0; r < filas.length; r++) {
+    hojaDbg.getRange(r + 1, 1).setValue(filas[r][0] || '');
+  }
+  hojaDbg.setColumnWidth(1, 900);
+
+  ss.setActiveSheet(hojaDbg);
+  ui.alert(
+    'Diagnóstico completado.\n\n' +
+    'Revisa la hoja "_DEBUG" que acaba de aparecer.\n' +
+    'Busca el campo "rubricGrades" en el texto.\n\n' +
+    'Comparte lo que ves para poder corregir el script.'
+  );
 }
 
 // ============================================================
