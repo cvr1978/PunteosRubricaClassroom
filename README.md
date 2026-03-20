@@ -99,17 +99,3 @@ El script usa la [Google Classroom API](https://developers.google.com/classroom)
 Crea una hoja de Google Sheets diferente para cada curso/sección y repite
 el Paso 1 en cada una.
 
----
-
-## Versión Python (alternativa local)
-
-Si prefieres trabajar con archivos Excel descargados, el archivo `procesar.py`
-hace lo mismo sin conexión a internet. Requiere Python 3.8+ y las librerías de
-`requirements.txt`.
-
-```bash
-pip install -r requirements.txt
-python procesar.py plantilla  datos_ejemplo/classroom_prog1_4PAA.csv
-python procesar.py datos      datos_ejemplo/classroom_prog1_4PAA.csv  plantilla_rubricas.xlsx
-python procesar.py reporte    datos_ejemplo/classroom_prog1_4PAA.csv  plantilla_rubricas.xlsx
-```
