@@ -244,16 +244,15 @@ function obtenerRubrica(courseId, courseWorkId) {
   }
 }
 
-// Usamos UrlFetchApp porque el servicio avanzado de Apps Script no siempre
-// incluye rubricGrades en la respuesta. Con fields explícito sí viene.
+// Usamos UrlFetchApp para obtener rubricGrades, que el servicio avanzado
+// de Apps Script no siempre devuelve. Sin fields filter para evitar 400.
 function obtenerSubmissions(courseId, courseWorkId) {
   var lista     = [];
   var pageToken = null;
   var token     = ScriptApp.getOAuthToken();
-  var baseUrl   = 'https://classroom.googleapis.com/v1/courses/' + courseId +
-                  '/courseWork/' + courseWorkId + '/studentSubmissions' +
-                  '?pageSize=100' +
-                  '&fields=nextPageToken,studentSubmissions(userId,assignedGrade,draftGrade,rubricGrades)';
+  var baseUrl   = 'https://classroom.googleapis.com/v1/courses/' +
+                  encodeURIComponent(courseId) + '/courseWork/' +
+                  encodeURIComponent(courseWorkId) + '/studentSubmissions?pageSize=100';
 
   do {
     var url = baseUrl + (pageToken ? '&pageToken=' + encodeURIComponent(pageToken) : '');
@@ -261,8 +260,9 @@ function obtenerSubmissions(courseId, courseWorkId) {
       headers: { 'Authorization': 'Bearer ' + token },
       muteHttpExceptions: true
     });
+    var http = res.getResponseCode();
     var data = JSON.parse(res.getContentText());
-    if (data.error) throw new Error(data.error.message);
+    if (http !== 200) throw new Error((data.error && data.error.message) || 'HTTP ' + http);
     if (data.studentSubmissions) lista = lista.concat(data.studentSubmissions);
     pageToken = data.nextPageToken || null;
   } while (pageToken);
