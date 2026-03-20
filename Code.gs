@@ -34,6 +34,7 @@ function onOpen() {
     .addItem('Sincronizar de nuevo (mismo curso)',   'sincronizarDenuevo')
     .addSeparator()
     .addItem('[Debug] Ver JSON de la API',            'debugVerAPI')
+    .addItem('[Debug] Ver contenido de _DATOS',       'debugVerDATOS')
     .addItem('Instrucciones',                        'mostrarInstrucciones')
     .addToUi();
 }
@@ -723,6 +724,43 @@ function debugVerAPI() {
     'Busca el campo "rubricGrades" en el texto.\n\n' +
     'Comparte lo que ves para poder corregir el script.'
   );
+}
+
+function debugVerDATOS() {
+  var ui = SpreadsheetApp.getUi();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  var hojaD = ss.getSheetByName(H_DATOS);
+  if (!hojaD) { ui.alert('No hay hoja _DATOS. Ejecuta el Paso 1 primero.'); return; }
+
+  var datos = hojaD.getDataRange().getValues();
+  var hojaDbg = ss.getSheetByName('_DEBUG2');
+  if (hojaDbg) ss.deleteSheet(hojaDbg);
+  hojaDbg = ss.insertSheet('_DEBUG2');
+
+  // Mostrar primeras filas de PUNTEOS con header
+  var modo = null;
+  var salida = [['=== Contenido de _DATOS (sección PUNTEOS) ===']];
+  var contPun = 0;
+  for (var r = 0; r < datos.length; r++) {
+    var tag = String(datos[r][0]).trim().toUpperCase();
+    if (tag === 'PUNTEOS') { modo = 'PUN'; salida.push(['--- PUNTEOS ---']); continue; }
+    if (tag === 'ACTIVIDADES') { modo = 'ACT'; salida.push(['--- ACTIVIDADES ---']); continue; }
+    if (modo === 'ACT' && datos[r][0] !== '') {
+      salida.push([JSON.stringify(datos[r].slice(0, 15))]);
+    }
+    if (modo === 'PUN' && datos[r][0] !== '' && contPun < 5) {
+      salida.push([JSON.stringify(datos[r].slice(0, 10))]);
+      contPun++;
+    }
+  }
+
+  for (var i = 0; i < salida.length; i++) {
+    hojaDbg.getRange(i + 1, 1).setValue(salida[i][0]);
+  }
+  hojaDbg.setColumnWidth(1, 1000);
+  ss.setActiveSheet(hojaDbg);
+  ui.alert('Revisa la hoja "_DEBUG2" para ver el contenido de _DATOS.');
 }
 
 // ============================================================
