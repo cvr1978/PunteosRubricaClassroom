@@ -158,14 +158,15 @@ function importarCurso(courseId, courseLabel) {
 
       var filaPunteo = [cw.id, sub.userId, total];
 
-      // Desglosar criterios si hay rubricGrades
+      // Desglosar criterios — la API devuelve assignedRubricGrades (objeto por criterionId)
       if (criterios.length > 0) {
         var mapaGrades = {};
-        if (sub.rubricGrades) {
-          for (var k = 0; k < sub.rubricGrades.length; k++) {
-            var rg  = sub.rubricGrades[k];
+        // Preferir assignedRubricGrades; si no, draftRubricGrades
+        var rubObj = sub.assignedRubricGrades || sub.draftRubricGrades || null;
+        if (rubObj) {
+          for (var crId in rubObj) {
+            var rg  = rubObj[crId];
             var pts = rg.points;
-            // Fallback: si points es null, obtener desde el nivel seleccionado
             if ((pts === null || pts === undefined) && rg.levelId && mapaNiveles[rg.criterionId]) {
               pts = mapaNiveles[rg.criterionId][rg.levelId];
             }
