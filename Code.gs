@@ -1,24 +1,25 @@
 // ============================================================
 // PunteosRubricaClassroom — Google Apps Script
+// Se conecta directamente a Google Classroom API y extrae
+// todos los punteos con desglose de rúbricas automáticamente.
 // ============================================================
-// Pega este código en Extensions > Apps Script de tu
-// Google Sheets y recarga la hoja para ver el menú.
+//
+// REQUISITO (una sola vez):
+//   En el editor de Apps Script → "Services" (+) →
+//   busca "Google Classroom API" → clic "Add"
+//
 // ============================================================
 
-var HOJA_DATOS    = '_DATOS_CLASSROOM';
-var HOJA_PLANTILLA = 'PLANTILLA';
-var HOJA_REPORTE  = 'REPORTE';
-var PREFIJO_RUB   = 'RUB_';
+// Nombres de hojas internas
+var H_DATOS      = '_DATOS';       // Hoja oculta con datos brutos
+var H_REPORTE    = 'REPORTE';      // Reporte final
 
 // Colores
 var C_AZUL_OSC   = '#1565C0';
-var C_AZUL_MED   = '#1976D2';
 var C_VERDE_OSC  = '#1B5E20';
 var C_VERDE_MED  = '#2E7D32';
-var C_AMARILLO   = '#FFF9C4';
-var C_TOTAL_BG   = '#E8F5E9';
 var C_GRIS       = '#F5F5F5';
-var C_GRIS_MED   = '#E0E0E0';
+var C_TOTAL_BG   = '#E8F5E9';
 
 // ============================================================
 // MENÚ
@@ -27,566 +28,583 @@ var C_GRIS_MED   = '#E0E0E0';
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('Rúbricas Classroom')
-    .addItem('Paso 1: Importar CSV de Classroom', 'mostrarDialogoImportar')
+    .addItem('1.  Seleccionar curso y sincronizar', 'mostrarSelectorCurso')
+    .addItem('2.  Generar Reporte Final',            'generarReporte')
     .addSeparator()
-    .addItem('Paso 2: Generar Plantilla de Rúbricas', 'generarPlantilla')
-    .addItem('Paso 3: Crear Hojas de Punteos', 'crearHojasPunteos')
-    .addItem('Paso 4: Generar Reporte Final', 'generarReporte')
-    .addSeparator()
-    .addItem('Instrucciones', 'mostrarInstrucciones')
+    .addItem('Sincronizar de nuevo (mismo curso)',   'sincronizarDenuevo')
+    .addItem('Instrucciones',                        'mostrarInstrucciones')
     .addToUi();
 }
 
 // ============================================================
-// PASO 1: IMPORTAR CSV
+// PASO 1 — SELECCIONAR CURSO
 // ============================================================
 
-function mostrarDialogoImportar() {
-  var html = HtmlService.createHtmlOutput(
-    '<style>' +
-    'body{font-family:Arial,sans-serif;padding:16px;font-size:13px}' +
-    'h3{color:#1565C0;margin-top:0}' +
-    'p{color:#555;margin:4px 0 10px}' +
-    'textarea{width:100%;height:180px;font-size:11px;border:1px solid #ccc;border-radius:3px;padding:6px;box-sizing:border-box}' +
-    'button{background:#1565C0;color:#fff;padding:9px 22px;border:none;border-radius:4px;cursor:pointer;font-size:13px;margin-top:10px}' +
-    'button:hover{background:#0d47a1}' +
-    '.note{font-size:11px;color:#888;margin-top:8px}' +
-    '</style>' +
-    '<h3>Importar CSV de Google Classroom</h3>' +
-    '<p>Abre el archivo CSV en un editor de texto o en el Bloc de notas,<br>' +
-    'selecciona todo (Ctrl+A), copia (Ctrl+C) y pega aquí:</p>' +
-    '<textarea id="csv" placeholder="Pega aquí el contenido completo del CSV..."></textarea>' +
-    '<p class="note">El CSV debe ser el exportado directamente desde Google Classroom > Calificaciones.</p>' +
-    '<button onclick="enviar()">Importar</button>' +
-    '<script>' +
-    'function enviar(){' +
-    '  var csv=document.getElementById("csv").value;' +
-    '  if(!csv.trim()){alert("Por favor pega el CSV primero");return;}' +
-    '  google.script.run' +
-    '    .withSuccessHandler(function(){alert("CSV importado correctamente.");google.script.host.close();})' +
-    '    .withFailureHandler(function(e){alert("Error: "+e.message);})' +
-    '    .importarCSVDesdeTexto(csv);' +
-    '}' +
-    '</script>'
-  ).setWidth(560).setHeight(360).setTitle('Paso 1: Importar CSV');
-  SpreadsheetApp.getUi().showModalDialog(html, 'Paso 1: Importar CSV');
-}
+function mostrarSelectorCurso() {
+  var ui = SpreadsheetApp.getUi();
 
-function importarCSVDesdeTexto(csvTexto) {
-  var filas = Utilities.parseCsv(csvTexto);
-  if (!filas || filas.length < 6) {
-    throw new Error('El CSV no tiene el formato esperado de Google Classroom (mínimo 6 filas).');
+  var cursos;
+  try {
+    cursos = listarCursos();
+  } catch (e) {
+    ui.alert(
+      'No se pudo conectar con Classroom.\n\n' +
+      'Asegúrate de haber agregado "Google Classroom API" en:\n' +
+      'Apps Script → Services (+) → Google Classroom API\n\n' +
+      'Error técnico: ' + e.message
+    );
+    return;
   }
 
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var hoja = ss.getSheetByName(HOJA_DATOS);
-  if (hoja) ss.deleteSheet(hoja);
-  hoja = ss.insertSheet(HOJA_DATOS);
-  hoja.hideSheet();
+  if (!cursos || cursos.length === 0) {
+    ui.alert('No se encontraron cursos activos en tu cuenta de Google Classroom.');
+    return;
+  }
 
+  var opciones = cursos.map(function (c) {
+    var etiqueta = c.name + (c.section ? '  —  ' + c.section : '');
+    return '<option value="' + c.id + '">' + escHtml(etiqueta) + '</option>';
+  }).join('');
+
+  var html = HtmlService.createHtmlOutput(
+    '<style>' +
+    'body{font-family:Arial,sans-serif;padding:18px;font-size:13px;color:#333}' +
+    'h3{color:#1565C0;margin:0 0 10px}' +
+    'p{margin:4px 0 10px;color:#555;font-size:12px}' +
+    'select{width:100%;padding:8px;font-size:13px;border:1px solid #ccc;border-radius:3px;margin-bottom:12px}' +
+    '.btn{background:#1565C0;color:#fff;padding:9px 24px;border:none;border-radius:4px;cursor:pointer;font-size:13px}' +
+    '.btn:hover{background:#0d47a1}.btn:disabled{background:#90A4AE;cursor:not-allowed}' +
+    '#msg{margin-top:12px;color:#2E7D32;font-size:12px;display:none}' +
+    '</style>' +
+    '<h3>Seleccionar Curso</h3>' +
+    '<p>Elige el curso cuyos punteos quieres importar.<br>' +
+    'Se descargarán estudiantes, actividades, rúbricas y calificaciones automáticamente.</p>' +
+    '<select id="sel">' + opciones + '</select>' +
+    '<button class="btn" id="btn" onclick="go()">Importar datos</button>' +
+    '<div id="msg">Conectando con Classroom, espera un momento…</div>' +
+    '<script>' +
+    'function go(){' +
+    '  var s=document.getElementById("sel");' +
+    '  document.getElementById("btn").disabled=true;' +
+    '  document.getElementById("msg").style.display="block";' +
+    '  google.script.run' +
+    '    .withSuccessHandler(function(r){alert(r);google.script.host.close();})' +
+    '    .withFailureHandler(function(e){alert("Error: "+e.message);' +
+    '      document.getElementById("btn").disabled=false;' +
+    '      document.getElementById("msg").style.display="none";})' +
+    '    .importarCurso(s.value,s.options[s.selectedIndex].text);' +
+    '}' +
+    '</script>'
+  ).setWidth(500).setHeight(300).setTitle('Seleccionar Curso');
+
+  ui.showModalDialog(html, 'Seleccionar Curso');
+}
+
+// ============================================================
+// IMPORTAR CURSO (corre en servidor)
+// ============================================================
+
+function importarCurso(courseId, courseLabel) {
+  // ── 1. Estudiantes ──────────────────────────────────────
+  var rawStudents = obtenerEstudiantes(courseId);
+  var estudiantes = rawStudents.map(function (s) {
+    var p = s.profile || {};
+    return {
+      id:     s.userId,
+      nombre: (p.name && p.name.fullName) ? p.name.fullName : '',
+      email:  p.emailAddress || ''
+    };
+  });
+
+  // ── 2. Actividades ──────────────────────────────────────
+  var rawWorks = obtenerActividades(courseId);
+
+  // ── 3. Para cada actividad: rúbrica + submissions ───────
+  var actividades = [];      // metadata
+  var tablaPunteos = [];     // filas planas para la hoja oculta
+
+  for (var i = 0; i < rawWorks.length; i++) {
+    var cw = rawWorks[i];
+
+    // Rúbrica (puede ser null si la actividad no tiene)
+    var rubrica   = obtenerRubrica(courseId, cw.id);
+    var criterios = parsearCriterios(rubrica);
+
+    // Submissions de todos los estudiantes
+    var subs = obtenerSubmissions(courseId, cw.id);
+
+    // Guardar metadata de la actividad
+    actividades.push({
+      id:          cw.id,
+      nombre:      cw.title || '',
+      fecha:       formatFecha(cw.dueDate),
+      maxPts:      cw.maxPoints || 0,
+      tieneRubrica: criterios.length > 0,
+      criterios:   criterios          // [{id, nombre, max}]
+    });
+
+    // Guardar punteos por estudiante
+    for (var j = 0; j < subs.length; j++) {
+      var sub   = subs[j];
+      var total = sub.assignedGrade !== undefined ? sub.assignedGrade
+                : (sub.draftGrade   !== undefined ? sub.draftGrade : '');
+
+      var filaPunteo = [cw.id, sub.userId, total];
+
+      // Desglosar criterios si hay rubricGrades
+      if (criterios.length > 0) {
+        var mapaGrades = {};
+        if (sub.rubricGrades) {
+          for (var k = 0; k < sub.rubricGrades.length; k++) {
+            mapaGrades[sub.rubricGrades[k].criterionId] = sub.rubricGrades[k].points;
+          }
+        }
+        for (var k = 0; k < criterios.length; k++) {
+          var pts = mapaGrades[criterios[k].id];
+          filaPunteo.push(pts !== undefined ? pts : '');
+        }
+      }
+
+      tablaPunteos.push(filaPunteo);
+    }
+  }
+
+  // ── 4. Persistir en hoja oculta ─────────────────────────
+  guardarEnHojaOculta(courseId, courseLabel, estudiantes, actividades, tablaPunteos);
+
+  return (
+    'Datos importados correctamente.\n\n' +
+    'Curso:        ' + courseLabel + '\n' +
+    'Estudiantes:  ' + estudiantes.length + '\n' +
+    'Actividades:  ' + actividades.length + '\n' +
+    'Con rúbrica:  ' + actividades.filter(function(a){ return a.tieneRubrica; }).length + '\n\n' +
+    'Ahora ejecuta el Paso 2: Generar Reporte Final.'
+  );
+}
+
+// ============================================================
+// FUNCIONES DE CLASSROOM API
+// ============================================================
+
+function listarCursos() {
+  var cursos = [], pageToken;
+  do {
+    var p   = { teacherId: 'me', pageSize: 50, courseStates: ['ACTIVE'] };
+    if (pageToken) p.pageToken = pageToken;
+    var res = Classroom.Courses.list(p);
+    if (res.courses) cursos = cursos.concat(res.courses);
+    pageToken = res.nextPageToken;
+  } while (pageToken);
+  return cursos;
+}
+
+function obtenerEstudiantes(courseId) {
+  var lista = [], pageToken;
+  do {
+    var p   = { pageSize: 200 };
+    if (pageToken) p.pageToken = pageToken;
+    var res = Classroom.Courses.Students.list(courseId, p);
+    if (res.students) lista = lista.concat(res.students);
+    pageToken = res.nextPageToken;
+  } while (pageToken);
+  return lista;
+}
+
+function obtenerActividades(courseId) {
+  var lista = [], pageToken;
+  do {
+    var p   = { pageSize: 100, orderBy: 'dueDate asc' };
+    if (pageToken) p.pageToken = pageToken;
+    var res = Classroom.Courses.CourseWork.list(courseId, p);
+    if (res.courseWork) lista = lista.concat(res.courseWork);
+    pageToken = res.nextPageToken;
+  } while (pageToken);
+  return lista;
+}
+
+function obtenerRubrica(courseId, courseWorkId) {
+  try {
+    // La API de Rúbricas fue añadida en 2023; puede no estar disponible en todos los entornos
+    var res = Classroom.Courses.CourseWork.Rubrics.list(courseId, courseWorkId, { pageSize: 1 });
+    var rubrics = (res && res.rubrics) ? res.rubrics : [];
+    return rubrics.length > 0 ? rubrics[0] : null;
+  } catch (e) {
+    return null; // Si no está disponible o no hay rúbrica, retorna null sin error
+  }
+}
+
+function obtenerSubmissions(courseId, courseWorkId) {
+  var lista = [], pageToken;
+  do {
+    var p   = { pageSize: 200 };
+    if (pageToken) p.pageToken = pageToken;
+    var res = Classroom.Courses.CourseWork.StudentSubmissions.list(courseId, courseWorkId, p);
+    if (res.studentSubmissions) lista = lista.concat(res.studentSubmissions);
+    pageToken = res.nextPageToken;
+  } while (pageToken);
+  return lista;
+}
+
+// Extrae criterios de una rúbrica → [{id, nombre, max}]
+function parsearCriterios(rubrica) {
+  if (!rubrica || !rubrica.criteria) return [];
+  return rubrica.criteria.map(function (c) {
+    var maxPts = 0;
+    if (c.levels) {
+      for (var i = 0; i < c.levels.length; i++) {
+        var pts = parseFloat(c.levels[i].points) || 0;
+        if (pts > maxPts) maxPts = pts;
+      }
+    }
+    return { id: c.id, nombre: c.title || '', max: maxPts };
+  });
+}
+
+// ============================================================
+// HOJA OCULTA  (_DATOS)
+// Estructura:
+//   Fila 1 : CURSO | courseId | courseLabel
+//   Fila 2 : ESTUDIANTES (marcador)
+//   Filas  : userId | nombre | email
+//   Fila   : ACTIVIDADES (marcador)
+//   Filas  : actId | nombre | fecha | maxPts | tieneRubrica |
+//             crit1Id | crit1Nombre | crit1Max |
+//             crit2Id | crit2Nombre | crit2Max | ...
+//   Fila   : PUNTEOS (marcador)
+//   Filas  : actId | userId | total | crit1Pts | crit2Pts | ...
+// ============================================================
+
+function guardarEnHojaOculta(courseId, courseLabel, estudiantes, actividades, tablaPunteos) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var h  = ss.getSheetByName(H_DATOS);
+  if (h) ss.deleteSheet(h);
+  h = ss.insertSheet(H_DATOS);
+  h.hideSheet();
+
+  var filas = [];
+
+  // Cabecera del curso
+  filas.push(['CURSO', courseId, courseLabel]);
+  filas.push([]);
+
+  // Bloque de estudiantes
+  filas.push(['ESTUDIANTES']);
+  for (var i = 0; i < estudiantes.length; i++) {
+    var e = estudiantes[i];
+    filas.push([e.id, e.nombre, e.email]);
+  }
+  filas.push([]);
+
+  // Bloque de actividades
+  filas.push(['ACTIVIDADES']);
+  for (var i = 0; i < actividades.length; i++) {
+    var a   = actividades[i];
+    var fila = [a.id, a.nombre, a.fecha, a.maxPts, a.tieneRubrica ? 'SI' : 'NO'];
+    for (var k = 0; k < a.criterios.length; k++) {
+      fila.push(a.criterios[k].id, a.criterios[k].nombre, a.criterios[k].max);
+    }
+    filas.push(fila);
+  }
+  filas.push([]);
+
+  // Bloque de punteos
+  filas.push(['PUNTEOS']);
+  for (var i = 0; i < tablaPunteos.length; i++) {
+    filas.push(tablaPunteos[i]);
+  }
+
+  // Normalizar ancho de columnas
   var maxCols = 0;
   for (var i = 0; i < filas.length; i++) {
     if (filas[i].length > maxCols) maxCols = filas[i].length;
   }
   for (var i = 0; i < filas.length; i++) {
     while (filas[i].length < maxCols) filas[i].push('');
-    hoja.getRange(i + 1, 1, 1, maxCols).setValues([filas[i]]);
+  }
+
+  if (filas.length > 0 && maxCols > 0) {
+    h.getRange(1, 1, filas.length, maxCols).setValues(filas);
   }
 }
 
-// ============================================================
-// LEER DATOS DE CLASSROOM
-// ============================================================
-
-function leerDatosClassroom() {
+// Lee la hoja oculta y devuelve { courseLabel, estudiantes, actividades, punteos }
+function leerHojaOculta() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var hoja = ss.getSheetByName(HOJA_DATOS);
-  if (!hoja) throw new Error('Primero importa el CSV usando el Paso 1.');
+  var h  = ss.getSheetByName(H_DATOS);
+  if (!h) throw new Error('No hay datos importados. Ejecuta primero el Paso 1.');
 
-  var datos = hoja.getDataRange().getValues();
-  if (datos.length < 6) throw new Error('El CSV importado tiene muy pocas filas.');
+  var datos = h.getDataRange().getValues();
+  var resultado = {
+    courseLabel: '',
+    estudiantes:  [],   // [{id, nombre, email}]
+    actividades:  [],   // [{id, nombre, fecha, maxPts, tieneRubrica, criterios:[]}]
+    punteos:      {}    // { actId: { userId: { total, criterios:[] } } }
+  };
 
-  // Fila 0: curso + fechas | Fila 1: sección + nombres de actividades
-  // Fila 2: "ABRIR CLASSROOM" + puntos máximos
-  // Fila 3: vacía | Fila 4: promedio | Fila 5+: estudiantes
-  var curso   = String(datos[0][0]).trim();
-  var seccion = String(datos[1][0]).trim();
-
-  // Actividades desde columna índice 4
-  var actividades = [];
-  for (var c = 4; c < datos[1].length; c++) {
-    var nombre = String(datos[1][c]).trim();
-    if (!nombre || nombre === '' || nombre.toLowerCase() === 'nan') continue;
-    var fecha  = String(datos[0][c]).trim();
-    var maxRaw = String(datos[2][c]).replace(',', '.');
-    var maxPts = parseFloat(maxRaw) || 0;
-    actividades.push({ nombre: nombre, fecha: fecha, maxPts: maxPts, colIdx: c });
-  }
-
-  // Estudiantes desde fila índice 5
-  var estudiantes = [];
-  for (var r = 5; r < datos.length; r++) {
-    var apellido = String(datos[r][0]).trim();
-    if (!apellido || apellido === '' || apellido.toLowerCase() === 'nan') continue;
-    if (apellido.toLowerCase().indexOf('promedio') !== -1) continue;
-
-    var est = {
-      apellido:   apellido,
-      nombre:     String(datos[r][1]).trim(),
-      email:      String(datos[r][2]).trim(),
-      porcentaje: String(datos[r][3]).trim(),
-      punteos:    {}
-    };
-    for (var ai = 0; ai < actividades.length; ai++) {
-      var raw = datos[r][actividades[ai].colIdx];
-      var val = raw !== '' && raw !== null && raw !== undefined ? parseFloat(String(raw).replace(',', '.')) : null;
-      est.punteos[actividades[ai].nombre] = isNaN(val) ? null : val;
-    }
-    estudiantes.push(est);
-  }
-
-  return { curso: curso, seccion: seccion, actividades: actividades, estudiantes: estudiantes };
-}
-
-// ============================================================
-// PASO 2: GENERAR PLANTILLA
-// ============================================================
-
-function generarPlantilla() {
-  var ui = SpreadsheetApp.getUi();
-  var datosClassroom;
-  try { datosClassroom = leerDatosClassroom(); }
-  catch(e) { ui.alert('Error: ' + e.message); return; }
-
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var hojaExist = ss.getSheetByName(HOJA_PLANTILLA);
-  if (hojaExist) {
-    var resp = ui.alert(
-      'La hoja PLANTILLA ya existe.',
-      '¿Deseas recrearla? Perderás la configuración actual.',
-      ui.ButtonSet.YES_NO
-    );
-    if (resp !== ui.Button.YES) return;
-    ss.deleteSheet(hojaExist);
-  }
-
-  var h = ss.insertSheet(HOJA_PLANTILLA);
-  ss.setActiveSheet(h);
-  ss.moveActiveSheet(1);
-
-  // Título
-  h.getRange('A1').setValue('Configuración de Rúbricas — ' + datosClassroom.curso + '  |  ' + datosClassroom.seccion);
-  h.getRange('A1').setFontSize(13).setFontWeight('bold').setBackground(C_AZUL_OSC).setFontColor('#FFFFFF');
-  h.getRange('A1:L1').merge();
-  h.setRowHeight(1, 30);
-
-  // Subtítulo instrucción
-  h.getRange('A2').setValue(
-    'Instrucciones: En la columna "¿Tiene Rúbrica?" escribe SI o NO. ' +
-    'Para las actividades con rúbrica, define los criterios y sus puntos máximos (celdas amarillas).'
-  );
-  h.getRange('A2:L2').merge();
-  h.getRange('A2').setFontSize(10).setFontStyle('italic').setFontColor('#555555').setBackground('#E3F2FD').setWrap(true);
-  h.setRowHeight(2, 32);
-
-  // Encabezados tabla (fila 4)
-  var FILA_H = 4;
-  var headers = [
-    'Actividad', 'Fecha', 'Máx. Pts', '¿Tiene Rúbrica?\n(SI / NO)',
-    'Criterio 1', 'Máx C1', 'Criterio 2', 'Máx C2',
-    'Criterio 3', 'Máx C3', 'Criterio 4', 'Máx C4'
-  ];
-  var rngH = h.getRange(FILA_H, 1, 1, headers.length);
-  rngH.setValues([headers]);
-  rngH.setBackground(C_AZUL_OSC).setFontColor('#FFFFFF').setFontWeight('bold')
-      .setWrap(true).setHorizontalAlignment('center').setVerticalAlignment('middle');
-  h.setRowHeight(FILA_H, 46);
-
-  // Validación desplegable SI/NO
-  var validacion = SpreadsheetApp.newDataValidation()
-    .requireValueInList(['SI', 'NO'], true).build();
-
-  // Filas de actividades
-  var acts = datosClassroom.actividades;
-  for (var i = 0; i < acts.length; i++) {
-    var fila = FILA_H + 1 + i;
-    var bg   = i % 2 === 0 ? '#FFFFFF' : C_GRIS;
-
-    h.getRange(fila, 1).setValue(acts[i].nombre).setBackground(bg).setFontColor('#000000').setHorizontalAlignment('left');
-    h.getRange(fila, 2).setValue(acts[i].fecha).setBackground(bg).setFontColor('#000000').setHorizontalAlignment('center');
-    h.getRange(fila, 3).setValue(acts[i].maxPts).setBackground(bg).setFontColor('#000000').setHorizontalAlignment('center');
-    h.getRange(fila, 4).setValue('NO').setBackground(C_GRIS_MED).setFontColor('#000000')
-                       .setHorizontalAlignment('center').setDataValidation(validacion);
-    // Celdas de criterios (amarillo = editables)
-    h.getRange(fila, 5, 1, 8).setBackground(C_AMARILLO).setFontColor('#000000');
-  }
-
-  // Anchos
-  h.setColumnWidth(1, 240);
-  h.setColumnWidth(2, 80);
-  h.setColumnWidth(3, 75);
-  h.setColumnWidth(4, 100);
-  for (var c = 5; c <= 12; c++) h.setColumnWidth(c, 115);
-
-  // Bordes
-  var numActas = acts.length;
-  h.getRange(FILA_H, 1, numActas + 1, headers.length)
-   .setBorder(true, true, true, true, true, true, '#BDBDBD', SpreadsheetApp.BorderStyle.SOLID);
-
-  h.setFrozenRows(FILA_H);
-
-  ui.alert(
-    'Plantilla generada.\n\n' +
-    'Siguiente paso:\n' +
-    '1. En la columna "¿Tiene Rúbrica?" cambia a SI las actividades evaluadas con rúbrica.\n' +
-    '2. Para esas actividades define los criterios y sus puntos máximos en las celdas amarillas.\n' +
-    '3. Ejecuta el Paso 3: Crear Hojas de Punteos.'
-  );
-}
-
-// ============================================================
-// LEER CONFIGURACIÓN DE LA PLANTILLA
-// ============================================================
-
-function leerConfigPlantilla(hojaPlantilla, actividades) {
-  var datos = hojaPlantilla.getDataRange().getValues();
-
-  // Encontrar fila de encabezados buscando "Actividad"
-  var filaH = -1;
+  var modo = null;
   for (var r = 0; r < datos.length; r++) {
-    if (String(datos[r][0]).trim() === 'Actividad') { filaH = r; break; }
-  }
-  if (filaH === -1) throw new Error('No se encontró la tabla en la hoja PLANTILLA.');
+    var f = datos[r];
+    var tag = String(f[0]).trim().toUpperCase();
 
-  var config = [];
-  for (var r = filaH + 1; r < datos.length; r++) {
-    var nombreAct = String(datos[r][0]).trim();
-    if (!nombreAct || nombreAct === '') continue;
+    if (tag === 'CURSO') {
+      resultado.courseLabel = String(f[2]).trim();
+      continue;
+    }
+    if (tag === 'ESTUDIANTES') { modo = 'EST';  continue; }
+    if (tag === 'ACTIVIDADES') { modo = 'ACT';  continue; }
+    if (tag === 'PUNTEOS')     { modo = 'PUN';  continue; }
+    if (!f[0] && !f[1])        { continue; }   // fila vacía
 
-    var tieneRubrica = String(datos[r][3]).trim().toUpperCase() === 'SI';
-    var criterios = [];
-    if (tieneRubrica) {
-      for (var ci = 0; ci < 4; ci++) {
-        var nomCrit = datos[r][4 + ci * 2] ? String(datos[r][4 + ci * 2]).trim() : '';
-        var maxCrit = datos[r][5 + ci * 2];
-        if (nomCrit && nomCrit !== '') {
-          var maxVal = parseFloat(String(maxCrit).replace(',', '.')) || 0;
-          criterios.push({ nombre: nomCrit, max: maxVal });
-        }
+    if (modo === 'EST') {
+      resultado.estudiantes.push({
+        id:     String(f[0]).trim(),
+        nombre: String(f[1]).trim(),
+        email:  String(f[2]).trim()
+      });
+
+    } else if (modo === 'ACT') {
+      var criterios = [];
+      var col = 5;
+      while (col < f.length && f[col] !== '') {
+        criterios.push({
+          id:     String(f[col]).trim(),
+          nombre: String(f[col + 1]).trim(),
+          max:    parseFloat(f[col + 2]) || 0
+        });
+        col += 3;
       }
-    }
+      resultado.actividades.push({
+        id:          String(f[0]).trim(),
+        nombre:      String(f[1]).trim(),
+        fecha:       String(f[2]).trim(),
+        maxPts:      parseFloat(f[3]) || 0,
+        tieneRubrica: String(f[4]).trim().toUpperCase() === 'SI',
+        criterios:   criterios
+      });
 
-    var actOrig = null;
-    for (var ai = 0; ai < actividades.length; ai++) {
-      if (actividades[ai].nombre === nombreAct) { actOrig = actividades[ai]; break; }
+    } else if (modo === 'PUN') {
+      var actId = String(f[0]).trim();
+      var estId = String(f[1]).trim();
+      var total = f[2] !== '' ? f[2] : null;
+      var crits = [];
+      for (var c = 3; c < f.length; c++) {
+        crits.push(f[c] !== '' ? f[c] : null);
+      }
+      if (!resultado.punteos[actId]) resultado.punteos[actId] = {};
+      resultado.punteos[actId][estId] = { total: total, criterios: crits };
     }
-
-    config.push({
-      nombre:       nombreAct,
-      fecha:        actOrig ? actOrig.fecha : '',
-      maxPts:       actOrig ? actOrig.maxPts : 0,
-      tieneRubrica: tieneRubrica,
-      criterios:    criterios
-    });
   }
-  return config;
+
+  return resultado;
 }
 
 // ============================================================
-// PASO 3: CREAR HOJAS DE PUNTEOS
-// ============================================================
-
-function crearHojasPunteos() {
-  var ui = SpreadsheetApp.getUi();
-  var datosClassroom;
-  try { datosClassroom = leerDatosClassroom(); }
-  catch(e) { ui.alert('Error: ' + e.message); return; }
-
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var hojaPlantilla = ss.getSheetByName(HOJA_PLANTILLA);
-  if (!hojaPlantilla) {
-    ui.alert('Primero ejecuta el Paso 2: Generar Plantilla.');
-    return;
-  }
-
-  var config;
-  try { config = leerConfigPlantilla(hojaPlantilla, datosClassroom.actividades); }
-  catch(e) { ui.alert('Error al leer la plantilla: ' + e.message); return; }
-
-  var actConRubrica = config.filter(function(c) { return c.tieneRubrica && c.criterios.length > 0; });
-  if (actConRubrica.length === 0) {
-    ui.alert('No hay actividades marcadas con SI en la plantilla, o no tienen criterios definidos.');
-    return;
-  }
-
-  var creadas = 0;
-  for (var i = 0; i < actConRubrica.length; i++) {
-    var act = actConRubrica[i];
-    var nombreHoja = (PREFIJO_RUB + act.nombre).substring(0, 100).replace(/[\/\\?\*\[\]:]/g, '_');
-    var hojaRub = ss.getSheetByName(nombreHoja);
-    if (hojaRub) ss.deleteSheet(hojaRub);
-    hojaRub = ss.insertSheet(nombreHoja);
-    crearHojaRubrica(hojaRub, act, datosClassroom.estudiantes);
-    creadas++;
-  }
-
-  ui.alert(
-    'Se crearon ' + creadas + ' hoja(s) de punteos.\n\n' +
-    'Siguiente paso:\n' +
-    '1. Ve a cada hoja que empieza con RUB_\n' +
-    '2. Ingresa los puntajes en las celdas amarillas\n' +
-    '3. La columna TOTAL se calcula automáticamente\n' +
-    '4. Cuando termines, ejecuta el Paso 4: Generar Reporte Final.'
-  );
-}
-
-function crearHojaRubrica(h, act, estudiantes) {
-  // Título
-  h.getRange('A1').setValue('Rúbrica: ' + act.nombre);
-  h.getRange('A1').setFontSize(12).setFontWeight('bold').setBackground(C_VERDE_OSC).setFontColor('#FFFFFF');
-  h.getRange(1, 1, 1, 3 + act.criterios.length + 1).merge();
-  h.setRowHeight(1, 26);
-
-  h.getRange('A2').setValue('Fecha: ' + act.fecha + '   |   Puntos máximos: ' + act.maxPts);
-  h.getRange('A2').setFontSize(10).setFontStyle('italic').setFontColor('#555555');
-  h.getRange(2, 1, 1, 3 + act.criterios.length + 1).merge();
-  h.setRowHeight(2, 20);
-
-  // Encabezados (fila 4)
-  var FILA_H = 4;
-  var headers = ['Apellido', 'Nombre', 'Email'];
-  for (var ci = 0; ci < act.criterios.length; ci++) {
-    headers.push(act.criterios[ci].nombre + '\n(Máx: ' + act.criterios[ci].max + ')');
-  }
-  headers.push('TOTAL');
-
-  h.getRange(FILA_H, 1, 1, headers.length).setValues([headers]);
-  h.getRange(FILA_H, 1, 1, 3).setBackground('#37474F').setFontColor('#FFFFFF').setFontWeight('bold');
-  h.getRange(FILA_H, 4, 1, act.criterios.length).setBackground(C_VERDE_MED).setFontColor('#FFFFFF').setFontWeight('bold');
-  h.getRange(FILA_H, 4 + act.criterios.length, 1, 1)
-   .setBackground(C_VERDE_OSC).setFontColor('#FFFFFF').setFontWeight('bold');
-  h.getRange(FILA_H, 1, 1, headers.length)
-   .setWrap(true).setHorizontalAlignment('center').setVerticalAlignment('middle');
-  h.setRowHeight(FILA_H, 46);
-
-  // Filas de estudiantes
-  for (var i = 0; i < estudiantes.length; i++) {
-    var fila = FILA_H + 1 + i;
-    var bg   = i % 2 === 0 ? '#FFFFFF' : C_GRIS;
-    var est  = estudiantes[i];
-
-    h.getRange(fila, 1).setValue(est.apellido).setBackground(bg).setFontColor('#000000').setHorizontalAlignment('left');
-    h.getRange(fila, 2).setValue(est.nombre).setBackground(bg).setFontColor('#000000').setHorizontalAlignment('left');
-    h.getRange(fila, 3).setValue(est.email).setBackground(bg).setFontColor('#000000').setHorizontalAlignment('left');
-
-    // Celdas de criterios (amarillo)
-    var numCrit = act.criterios.length;
-    if (numCrit > 0) {
-      h.getRange(fila, 4, 1, numCrit).setBackground(C_AMARILLO).setFontColor('#000000').setHorizontalAlignment('center');
-    }
-
-    // Fórmula TOTAL
-    var colTotal = 4 + numCrit;
-    if (numCrit > 0) {
-      var iniLetra = columnToLetter(4);
-      var finLetra = columnToLetter(3 + numCrit);
-      h.getRange(fila, colTotal).setFormula('=SUM(' + iniLetra + fila + ':' + finLetra + fila + ')')
-       .setBackground(C_TOTAL_BG).setFontWeight('bold').setHorizontalAlignment('center');
-    }
-  }
-
-  // Fila de máximos
-  var filaTot = FILA_H + estudiantes.length + 2;
-  h.getRange(filaTot, 1).setValue('PUNTAJE MÁXIMO').setFontWeight('bold').setBackground('#E3F2FD');
-  for (var ci = 0; ci < act.criterios.length; ci++) {
-    h.getRange(filaTot, 4 + ci).setValue(act.criterios[ci].max)
-     .setFontWeight('bold').setBackground('#E3F2FD').setHorizontalAlignment('center');
-  }
-  h.getRange(filaTot, 4 + act.criterios.length).setValue(act.maxPts)
-   .setFontWeight('bold').setBackground('#E3F2FD').setHorizontalAlignment('center');
-
-  // Anchos
-  h.setColumnWidth(1, 190);
-  h.setColumnWidth(2, 190);
-  h.setColumnWidth(3, 210);
-  for (var c = 4; c <= headers.length; c++) h.setColumnWidth(c, 115);
-
-  // Bordes
-  h.getRange(FILA_H, 1, estudiantes.length + 1, headers.length)
-   .setBorder(true, true, true, true, true, true, '#BDBDBD', SpreadsheetApp.BorderStyle.SOLID);
-
-  h.setFrozenRows(FILA_H);
-  h.setFrozenColumns(3);
-}
-
-// ============================================================
-// PASO 4: GENERAR REPORTE FINAL
+// PASO 2 — GENERAR REPORTE FINAL
 // ============================================================
 
 function generarReporte() {
   var ui = SpreadsheetApp.getUi();
-  var datosClassroom;
-  try { datosClassroom = leerDatosClassroom(); }
-  catch(e) { ui.alert('Error: ' + e.message); return; }
+  var datos;
+  try { datos = leerHojaOculta(); }
+  catch (e) { ui.alert('Error: ' + e.message); return; }
+
+  if (datos.estudiantes.length === 0 || datos.actividades.length === 0) {
+    ui.alert('No hay datos suficientes. Ejecuta el Paso 1 primero.');
+    return;
+  }
+
+  // ── Construir lista de columnas del reporte ──────────────
+  // tipo: 'directa' | 'criterio' | 'total'
+  var cols = [];
+  for (var ai = 0; ai < datos.actividades.length; ai++) {
+    var act = datos.actividades[ai];
+    if (act.tieneRubrica && act.criterios.length > 0) {
+      for (var k = 0; k < act.criterios.length; k++) {
+        cols.push({
+          cabecera:  act.nombre + '\n' + act.criterios[k].nombre + '\n(/' + act.criterios[k].max + ')',
+          actId:     act.id,
+          tipo:      'criterio',
+          critIdx:   k
+        });
+      }
+      cols.push({
+        cabecera: act.nombre + '\nTOTAL\n(/' + act.maxPts + ')',
+        actId:    act.id,
+        tipo:     'total'
+      });
+    } else {
+      cols.push({
+        cabecera: act.nombre + '\n(/' + act.maxPts + ')',
+        actId:    act.id,
+        tipo:     'directa'
+      });
+    }
+  }
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var hojaPlantilla = ss.getSheetByName(HOJA_PLANTILLA);
-  if (!hojaPlantilla) { ui.alert('Primero ejecuta el Paso 2: Generar Plantilla.'); return; }
-
-  var config;
-  try { config = leerConfigPlantilla(hojaPlantilla, datosClassroom.actividades); }
-  catch(e) { ui.alert('Error al leer la plantilla: ' + e.message); return; }
-
-  // Crear/recrear hoja REPORTE
-  var hojaRep = ss.getSheetByName(HOJA_REPORTE);
+  var hojaRep = ss.getSheetByName(H_REPORTE);
   if (hojaRep) ss.deleteSheet(hojaRep);
-  hojaRep = ss.insertSheet(HOJA_REPORTE);
+  hojaRep = ss.insertSheet(H_REPORTE);
   ss.setActiveSheet(hojaRep);
   ss.moveActiveSheet(1);
 
-  // ── Leer puntajes de cada hoja de rúbrica ──
-  // estructura: { actNombre: { 'APELLIDO|NOMBRE': { criterios: [], total: num } } }
-  var punteosRub = {};
-  for (var ci = 0; ci < config.length; ci++) {
-    var actCfg = config[ci];
-    if (!actCfg.tieneRubrica || actCfg.criterios.length === 0) continue;
-    var nombreHoja = (PREFIJO_RUB + actCfg.nombre).substring(0, 100).replace(/[\/\\?\*\[\]:]/g, '_');
-    var hojaRub = ss.getSheetByName(nombreHoja);
-    if (!hojaRub) continue;
+  var FIJOS    = 3;   // Nombre | Email | (espacio promedio futuro)
+  var FILA_H   = 4;
+  var totalCols = FIJOS + cols.length;
 
-    var datosRub = hojaRub.getDataRange().getValues();
-    var FILA_H_RUB = 3; // 0-indexed (fila 4)
-    punteosRub[actCfg.nombre] = {};
-
-    for (var r = FILA_H_RUB + 1; r < datosRub.length; r++) {
-      var fila = datosRub[r];
-      var apellido = String(fila[0]).trim();
-      var nombre   = String(fila[1]).trim();
-      if (!apellido && !nombre) continue;
-
-      var key = apellido + '|' + nombre;
-      var criVals = [];
-      for (var k = 0; k < actCfg.criterios.length; k++) {
-        var rawVal = fila[3 + k];
-        criVals.push(rawVal !== '' && rawVal !== null ? (parseFloat(rawVal) || 0) : null);
-      }
-      var totalIdx = 3 + actCfg.criterios.length;
-      var totalVal = fila[totalIdx] !== '' && fila[totalIdx] !== null ? (parseFloat(fila[totalIdx]) || 0) : null;
-      punteosRub[actCfg.nombre][key] = { criterios: criVals, total: totalVal };
-    }
-  }
-
-  // ── Construir lista de columnas del reporte ──
-  var colsInfo = []; // { label, actNombre, tipo ('directa'|'criterio'|'total'), criterioIdx? }
-  for (var ci = 0; ci < config.length; ci++) {
-    var act = config[ci];
-    if (!act.tieneRubrica || act.criterios.length === 0) {
-      colsInfo.push({ label: act.nombre, actNombre: act.nombre, tipo: 'directa' });
-    } else {
-      for (var k = 0; k < act.criterios.length; k++) {
-        colsInfo.push({
-          label: act.nombre + '\n' + act.criterios[k].nombre,
-          actNombre: act.nombre, tipo: 'criterio', criterioIdx: k
-        });
-      }
-      colsInfo.push({ label: act.nombre + '\nTOTAL', actNombre: act.nombre, tipo: 'total' });
-    }
-  }
-
-  var FILA_H = 4;
-  var numFijos = 4; // Apellido, Nombre, Email, Promedio
-  var totalCols = numFijos + colsInfo.length;
-
-  // ── Fila 1: Título ──
+  // ── Fila 1: título ───────────────────────────────────────
   hojaRep.getRange(1, 1, 1, totalCols).merge()
-    .setValue('Reporte Final — ' + datosClassroom.curso + '   ' + datosClassroom.seccion)
-    .setFontSize(14).setFontWeight('bold')
+    .setValue('Reporte de Calificaciones — ' + datos.courseLabel)
+    .setFontSize(13).setFontWeight('bold')
     .setBackground(C_AZUL_OSC).setFontColor('#FFFFFF')
     .setHorizontalAlignment('center').setVerticalAlignment('middle');
-  hojaRep.setRowHeight(1, 32);
+  hojaRep.setRowHeight(1, 30);
 
+  // ── Fila 2: fecha de actualización ───────────────────────
   hojaRep.getRange(2, 1, 1, totalCols).merge()
-    .setValue('Generado: ' + new Date().toLocaleString('es-GT'))
-    .setFontSize(10).setFontStyle('italic').setFontColor('#888888');
+    .setValue('Sincronizado desde Google Classroom: ' + new Date().toLocaleString('es-GT'))
+    .setFontSize(10).setFontStyle('italic').setFontColor('#888888').setBackground('#FAFAFA');
   hojaRep.setRowHeight(2, 18);
 
-  // ── Fila 4: Encabezados ──
-  var encFijos = ['Apellido', 'Nombre', 'Email', 'Promedio'];
-  var encActs  = colsInfo.map(function(c) { return c.label; });
-  var todosEnc = encFijos.concat(encActs);
-
-  hojaRep.getRange(FILA_H, 1, 1, todosEnc.length).setValues([todosEnc]);
-  hojaRep.getRange(FILA_H, 1, 1, 4)
+  // ── Fila 4: encabezados ───────────────────────────────────
+  var encFijos = ['Estudiante', 'Email', 'Promedio'];
+  var encActs  = cols.map(function (c) { return c.cabecera; });
+  hojaRep.getRange(FILA_H, 1, 1, totalCols).setValues([encFijos.concat(encActs)]);
+  hojaRep.getRange(FILA_H, 1, 1, FIJOS)
     .setBackground('#37474F').setFontColor('#FFFFFF').setFontWeight('bold');
 
-  for (var ci = 0; ci < colsInfo.length; ci++) {
-    var col = ci + 5;
-    var tipo = colsInfo[ci].tipo;
-    var bgH = tipo === 'directa' ? C_AZUL_OSC : (tipo === 'criterio' ? C_VERDE_MED : C_VERDE_OSC);
-    hojaRep.getRange(FILA_H, col).setBackground(bgH).setFontColor('#FFFFFF').setFontWeight('bold');
+  for (var ci = 0; ci < cols.length; ci++) {
+    var bgH = cols[ci].tipo === 'directa'  ? C_AZUL_OSC :
+              cols[ci].tipo === 'criterio' ? C_VERDE_MED : C_VERDE_OSC;
+    hojaRep.getRange(FILA_H, FIJOS + 1 + ci)
+      .setBackground(bgH).setFontColor('#FFFFFF').setFontWeight('bold');
   }
 
   hojaRep.getRange(FILA_H, 1, 1, totalCols)
     .setWrap(true).setHorizontalAlignment('center').setVerticalAlignment('middle');
-  hojaRep.setRowHeight(FILA_H, 52);
+  hojaRep.setRowHeight(FILA_H, 58);
 
-  // ── Filas de estudiantes ──
-  var ests = datosClassroom.estudiantes;
+  // ── Filas de estudiantes ─────────────────────────────────
+  var ests = datos.estudiantes;
   for (var ei = 0; ei < ests.length; ei++) {
-    var fila = FILA_H + 1 + ei;
-    var bg   = ei % 2 === 0 ? '#FFFFFF' : C_GRIS;
-    var est  = ests[ei];
+    var filaN = FILA_H + 1 + ei;
+    var bg    = ei % 2 === 0 ? '#FFFFFF' : C_GRIS;
+    var est   = ests[ei];
 
-    hojaRep.getRange(fila, 1).setValue(est.apellido).setBackground(bg).setFontColor('#000000').setHorizontalAlignment('left');
-    hojaRep.getRange(fila, 2).setValue(est.nombre).setBackground(bg).setFontColor('#000000').setHorizontalAlignment('left');
-    hojaRep.getRange(fila, 3).setValue(est.email).setBackground(bg).setFontColor('#000000').setHorizontalAlignment('left');
-    hojaRep.getRange(fila, 4).setValue(est.porcentaje).setBackground(bg).setFontColor('#000000').setHorizontalAlignment('center');
+    hojaRep.getRange(filaN, 1).setValue(est.nombre)
+      .setBackground(bg).setFontColor('#000000').setHorizontalAlignment('left');
+    hojaRep.getRange(filaN, 2).setValue(est.email)
+      .setBackground(bg).setFontColor('#000000').setHorizontalAlignment('left');
+    hojaRep.getRange(filaN, 3).setValue('')
+      .setBackground(bg);
 
-    for (var ci = 0; ci < colsInfo.length; ci++) {
-      var col  = ci + 5;
-      var info = colsInfo[ci];
-      var key  = est.apellido + '|' + est.nombre;
-      var valor = null;
+    for (var ci = 0; ci < cols.length; ci++) {
+      var colN    = FIJOS + 1 + ci;
+      var col     = cols[ci];
+      var actPts  = datos.punteos[col.actId] || {};
+      var estPts  = actPts[est.id] || null;
+      var valor   = null;
 
-      if (info.tipo === 'directa') {
-        valor = est.punteos[info.actNombre];
-        hojaRep.getRange(fila, col).setBackground(ei % 2 === 0 ? '#E3F2FD' : '#BBDEFB');
-      } else if (info.tipo === 'criterio') {
-        var rubData = punteosRub[info.actNombre];
-        if (rubData && rubData[key]) valor = rubData[key].criterios[info.criterioIdx];
-        hojaRep.getRange(fila, col).setBackground(ei % 2 === 0 ? '#E8F5E9' : '#C8E6C9');
+      if (col.tipo === 'directa') {
+        valor = estPts ? estPts.total : null;
+        hojaRep.getRange(filaN, colN)
+          .setBackground(ei % 2 === 0 ? '#E3F2FD' : '#BBDEFB');
+
+      } else if (col.tipo === 'criterio') {
+        valor = (estPts && estPts.criterios[col.critIdx] !== undefined)
+                ? estPts.criterios[col.critIdx] : null;
+        hojaRep.getRange(filaN, colN)
+          .setBackground(ei % 2 === 0 ? '#E8F5E9' : '#C8E6C9');
+
       } else { // total
-        var rubData = punteosRub[info.actNombre];
-        if (rubData && rubData[key]) valor = rubData[key].total;
-        hojaRep.getRange(fila, col).setBackground(ei % 2 === 0 ? '#F1F8E9' : '#DCEDC8').setFontWeight('bold');
+        valor = estPts ? estPts.total : null;
+        hojaRep.getRange(filaN, colN)
+          .setBackground(ei % 2 === 0 ? C_TOTAL_BG : '#DCEDC8')
+          .setFontWeight('bold');
       }
 
-      if (valor !== null && valor !== undefined && valor !== '') {
-        hojaRep.getRange(fila, col).setValue(valor).setHorizontalAlignment('center');
+      if (valor !== null && valor !== '') {
+        hojaRep.getRange(filaN, colN)
+          .setValue(valor).setHorizontalAlignment('center');
       }
     }
   }
 
-  // ── Anchos ──
-  hojaRep.setColumnWidth(1, 185);
-  hojaRep.setColumnWidth(2, 185);
-  hojaRep.setColumnWidth(3, 210);
-  hojaRep.setColumnWidth(4, 80);
-  for (var c = 5; c <= totalCols; c++) hojaRep.setColumnWidth(c, 110);
+  // ── Fila de máximos ──────────────────────────────────────
+  var filaTot = FILA_H + ests.length + 2;
+  hojaRep.getRange(filaTot, 1).setValue('PUNTAJE MÁXIMO')
+    .setFontWeight('bold').setBackground('#E3F2FD').setFontColor('#000000');
+  for (var ci = 0; ci < cols.length; ci++) {
+    var act = datos.actividades.filter(function(a){ return a.id === cols[ci].actId; })[0];
+    var maxVal = 0;
+    if (cols[ci].tipo === 'criterio' && act) {
+      maxVal = act.criterios[cols[ci].critIdx] ? act.criterios[cols[ci].critIdx].max : 0;
+    } else if (act) {
+      maxVal = act.maxPts;
+    }
+    hojaRep.getRange(filaTot, FIJOS + 1 + ci)
+      .setValue(maxVal).setFontWeight('bold').setBackground('#E3F2FD')
+      .setHorizontalAlignment('center').setFontColor('#000000');
+  }
 
-  // ── Bordes ──
+  // ── Formato final ────────────────────────────────────────
+  hojaRep.setColumnWidth(1, 200);
+  hojaRep.setColumnWidth(2, 215);
+  hojaRep.setColumnWidth(3, 75);
+  for (var c = FIJOS + 1; c <= totalCols; c++) hojaRep.setColumnWidth(c, 105);
+
   hojaRep.getRange(FILA_H, 1, ests.length + 1, totalCols)
     .setBorder(true, true, true, true, true, true, '#BDBDBD', SpreadsheetApp.BorderStyle.SOLID);
 
   hojaRep.setFrozenRows(FILA_H);
-  hojaRep.setFrozenColumns(4);
+  hojaRep.setFrozenColumns(FIJOS);
 
   ui.alert(
-    'Reporte Final generado.\n\n' +
-    'Columnas azules = puntaje directo de Classroom\n' +
-    'Columnas verde claro = criterios de rúbrica\n' +
-    'Columnas verde oscuro = TOTAL de rúbrica'
+    'Reporte generado correctamente.\n\n' +
+    'Columnas azules    = puntaje directo de Classroom\n' +
+    'Columnas verdes    = criterios de rúbrica (desde Classroom)\n' +
+    'Columnas verde osc = TOTAL de la rúbrica\n\n' +
+    'Si una celda está vacía significa que aún no hay calificación registrada.'
   );
+}
+
+// ============================================================
+// SINCRONIZAR DE NUEVO (mismo curso)
+// ============================================================
+
+function sincronizarDenuevo() {
+  var ui = SpreadsheetApp.getUi();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var h  = ss.getSheetByName(H_DATOS);
+  if (!h) { ui.alert('No hay un curso importado. Usa el Paso 1 primero.'); return; }
+
+  var datos = h.getRange(1, 1, 1, 3).getValues()[0];
+  var courseId    = String(datos[1]).trim();
+  var courseLabel = String(datos[2]).trim();
+  if (!courseId) { ui.alert('No se encontró el ID del curso. Usa el Paso 1 para seleccionarlo.'); return; }
+
+  try {
+    var msg = importarCurso(courseId, courseLabel);
+    ui.alert('Datos actualizados.\n\n' + msg);
+  } catch (e) {
+    ui.alert('Error al sincronizar: ' + e.message);
+  }
+}
+
+// ============================================================
+// UTILIDADES
+// ============================================================
+
+function formatFecha(dueDate) {
+  if (!dueDate) return '';
+  var meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  return (dueDate.day || '') + '-' + meses[((dueDate.month || 1) - 1)];
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // ============================================================
@@ -595,43 +613,37 @@ function generarReporte() {
 
 function mostrarInstrucciones() {
   var html = HtmlService.createHtmlOutput(
-    '<style>body{font-family:Arial,sans-serif;padding:18px;font-size:13px;line-height:1.5}' +
-    'h2{color:#1565C0;margin-top:0;font-size:16px}' +
-    '.paso{background:#F5F5F5;padding:10px 14px;border-radius:4px;margin:10px 0;border-left:4px solid #1565C0}' +
-    '.paso.verde{border-left-color:#2E7D32}' +
-    '.paso h3{margin:0 0 4px;font-size:13px;color:#1565C0}' +
-    '.paso.verde h3{color:#2E7D32}' +
-    'p{margin:4px 0}' +
+    '<style>' +
+    'body{font-family:Arial,sans-serif;padding:18px;font-size:13px;line-height:1.6;color:#333}' +
+    'h2{color:#1565C0;margin:0 0 12px;font-size:15px}' +
+    '.box{background:#F5F5F5;padding:10px 14px;border-radius:4px;margin:8px 0;border-left:4px solid #1565C0}' +
+    '.box.verde{border-color:#2E7D32}' +
+    '.box.naranja{border-color:#E65100}' +
+    'b{color:#1565C0}.box.verde b{color:#1B5E20}' +
     '</style>' +
     '<h2>Rúbricas Classroom — Instrucciones</h2>' +
-    '<div class="paso"><h3>Paso 1: Importar CSV</h3>' +
-    '<p>Exporta las calificaciones desde Google Classroom como CSV.<br>' +
-    'Abre el archivo en el Bloc de notas, copia todo y usa el menú para importarlo.</p></div>' +
-    '<div class="paso"><h3>Paso 2: Generar Plantilla</h3>' +
-    '<p>Se crea la hoja <b>PLANTILLA</b>.<br>' +
-    'Escribe <b>SI</b> o <b>NO</b> para cada actividad en la columna "¿Tiene Rúbrica?".<br>' +
-    'Para las que tienen rúbrica, ingresa los criterios y sus puntos máximos en las celdas amarillas.</p></div>' +
-    '<div class="paso verde"><h3>Paso 3: Crear Hojas de Punteos</h3>' +
-    '<p>Se crean hojas <b>RUB_[nombre]</b> para cada actividad con rúbrica.<br>' +
-    'Ingresa los puntajes por criterio en las celdas amarillas.<br>' +
-    'La columna TOTAL se calcula sola.</p></div>' +
-    '<div class="paso verde"><h3>Paso 4: Generar Reporte Final</h3>' +
-    '<p>Se crea la hoja <b>REPORTE</b> con todo consolidado.<br>' +
-    'Columnas azules = puntaje directo · Columnas verdes = criterios de rúbrica.</p></div>'
-  ).setWidth(480).setHeight(400).setTitle('Instrucciones');
+
+    '<div class="box naranja"><b>Requisito (una sola vez)</b><br>' +
+    'En el editor de Apps Script → <b>Services (+)</b> → busca<br>' +
+    '<b>Google Classroom API</b> → clic en <b>Add</b>.</div>' +
+
+    '<div class="box"><b>Paso 1: Seleccionar curso y sincronizar</b><br>' +
+    'El script se conecta a Classroom y descarga automáticamente:<br>' +
+    '• Lista completa de estudiantes<br>' +
+    '• Todas las actividades con fechas y puntajes máximos<br>' +
+    '• Rúbricas configuradas en Classroom (criterios y niveles)<br>' +
+    '• Calificaciones por estudiante, con desglose por criterio si hay rúbrica</div>' +
+
+    '<div class="box verde"><b>Paso 2: Generar Reporte Final</b><br>' +
+    'Crea la hoja <b>REPORTE</b> con todo consolidado:<br>' +
+    '• Columnas <b>azules</b> = puntaje directo<br>' +
+    '• Columnas <b>verde claro</b> = criterio de rúbrica<br>' +
+    '• Columnas <b>verde oscuro</b> = TOTAL de la rúbrica<br>' +
+    '• Celda vacía = actividad sin calificar aún</div>' +
+
+    '<div class="box"><b>Actualizar datos</b><br>' +
+    'Usa "Sincronizar de nuevo" para refrescar las calificaciones<br>' +
+    'del mismo curso sin tener que seleccionarlo otra vez.</div>'
+  ).setWidth(480).setHeight(420).setTitle('Instrucciones');
   SpreadsheetApp.getUi().showModalDialog(html, 'Instrucciones');
-}
-
-// ============================================================
-// UTILIDAD
-// ============================================================
-
-function columnToLetter(col) {
-  var letter = '';
-  while (col > 0) {
-    var rem = (col - 1) % 26;
-    letter = String.fromCharCode(65 + rem) + letter;
-    col = Math.floor((col - 1) / 26);
-  }
-  return letter;
 }

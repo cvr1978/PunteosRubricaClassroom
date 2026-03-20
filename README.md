@@ -1,102 +1,110 @@
 # Punteos + Rúbrica — Google Classroom
 
-Herramienta para generar reportes de calificaciones combinando el archivo de
-Google Classroom con el desglose de criterios de rúbrica.
+Herramienta que se conecta **directamente a Google Classroom** y extrae
+automáticamente todos los punteos con el desglose de criterios de rúbrica.
 
-**Resultado:** Una hoja de Google Sheets con:
-- Actividades **sin rúbrica** → columna con el punteo directo (azul)
-- Actividades **con rúbrica** → columnas por cada criterio + columna de total (verde)
+**Resultado:** Una hoja REPORTE en Google Sheets con:
+- Actividades **sin rúbrica** → columna con punteo directo (azul)
+- Actividades **con rúbrica en Classroom** → columnas por criterio + total (verde)
 
 ---
 
-## Cómo usar (versión Google Sheets — sin instalar nada)
+## Configuración inicial (una sola vez)
 
-### 1. Preparar el script
+### 1. Crear la hoja de Google Sheets
 
-1. Abre **[Google Sheets](https://sheets.google.com)** y crea una hoja nueva.
-2. En el menú ve a **Extensiones → Apps Script**.
-3. Borra todo el código que aparece por defecto.
+1. Ve a [sheets.google.com](https://sheets.google.com) y crea una hoja nueva.
+2. Menú **Extensiones → Apps Script**.
+3. Borra el código que aparece por defecto.
 4. Copia el contenido del archivo **`Code.gs`** de este repositorio y pégalo.
-5. Haz clic en **Guardar** (ícono de disquete o Ctrl+S).
-6. Cierra la pestaña de Apps Script y **recarga** la hoja de Google Sheets.
-7. Aparecerá un nuevo menú llamado **"Rúbricas Classroom"** en la barra de menús.
+5. Guarda (Ctrl+S) y cierra la pestaña de Apps Script.
 
-> La primera vez que ejecutes cualquier paso, Google te pedirá autorizar el
-> script. Haz clic en **"Revisar permisos"** → selecciona tu cuenta → **"Avanzado"**
-> → **"Ir a [nombre del proyecto] (no seguro)"** → **"Permitir"**.
+### 2. Habilitar la API de Classroom
 
----
+Dentro del editor de Apps Script (antes de cerrar):
 
-### Paso 1 — Importar CSV de Classroom
+1. Clic en **"Services"** (ícono `+` en el panel izquierdo)
+2. Busca **"Google Classroom API"**
+3. Clic en **Add**
+4. Guarda de nuevo
 
-1. En Google Classroom abre el curso, ve a **Calificaciones** y descarga el CSV.
-2. Abre el archivo CSV con el **Bloc de notas** (clic derecho → "Abrir con" → Bloc de notas).
-3. Selecciona todo (Ctrl+A), copia (Ctrl+C).
-4. En la hoja de Google Sheets, ve al menú **Rúbricas Classroom → Paso 1: Importar CSV**.
-5. Pega el contenido en el cuadro que aparece y haz clic en **Importar**.
+### 3. Recargar la hoja
 
----
+Recarga la hoja de Google Sheets. Aparecerá el menú **"Rúbricas Classroom"**.
 
-### Paso 2 — Generar Plantilla de Rúbricas
-
-Ve al menú **Rúbricas Classroom → Paso 2: Generar Plantilla**.
-
-Se crea la hoja **PLANTILLA** con todas las actividades del curso. Para cada actividad:
-
-- En la columna **"¿Tiene Rúbrica?"** selecciona **SI** o **NO**.
-- Para las que tienen rúbrica, rellena los criterios en las **celdas amarillas**:
-
-| Actividad             | Máx. Pts | ¿Tiene Rúbrica? | Criterio 1  | Máx C1 | Criterio 2 | Máx C2 | Criterio 3   | Máx C3 |
-|-----------------------|----------|-----------------|-------------|--------|------------|--------|--------------|--------|
-| ACTIVIDAD UNO…        | 15       | SI              | Puntualidad | 5      | Contenido  | 5      | Presentación | 5      |
-| ASPECTOS UNIDAD UNO   | 10       | SI              | Presentación| 3      | Dominio    | 4      | Participación| 3      |
-| TAREAS EN CLASE…      | 15       | NO              |             |        |            |        |              |        |
+> **Primera ejecución:** Google pedirá autorizar el script.
+> Haz clic en "Revisar permisos" → selecciona tu cuenta →
+> "Avanzado" → "Ir al proyecto (no seguro)" → "Permitir".
+> Esto es normal porque el script accede a tu Classroom.
 
 ---
 
-### Paso 3 — Crear Hojas de Punteos
+## Uso (2 pasos)
 
-Ve al menú **Rúbricas Classroom → Paso 3: Crear Hojas de Punteos**.
+### Paso 1 — Seleccionar curso y sincronizar
 
-Se crea una hoja **RUB_[nombre de la actividad]** por cada actividad marcada con SI.
-Cada hoja tiene:
-- Lista de estudiantes ya cargada
-- **Celdas amarillas** para ingresar el punteo de cada criterio
-- Columna **TOTAL** que se calcula automáticamente
+**Rúbricas Classroom → 1. Seleccionar curso y sincronizar**
 
-Ingresa los puntajes y cuando termines pasa al paso 4.
+Elige tu curso en el menú desplegable. El script descarga automáticamente:
 
----
+- Lista de estudiantes
+- Todas las actividades con fechas y puntaje máximo
+- Rúbricas configuradas en Classroom (criterios y niveles de calificación)
+- Calificaciones por estudiante, **con desglose por criterio** si la actividad tiene rúbrica
 
-### Paso 4 — Generar Reporte Final
+### Paso 2 — Generar Reporte Final
 
-Ve al menú **Rúbricas Classroom → Paso 4: Generar Reporte Final**.
+**Rúbricas Classroom → 2. Generar Reporte Final**
 
-Se crea la hoja **REPORTE** con todo consolidado:
+Se crea la hoja **REPORTE**:
 
 ```
-┌──────────┬──────────┬──────────┬──────┬──────────────────────┬──────┬─────────────────────┐
-│ Apellido │ Nombre   │ Email    │  %   │  ACTIVIDAD UNO               │  ASPECTOS UNO        │
-│          │          │          │      │ Puntual│Cont.│Pres.│TOTAL│Directo│Pres.│Dom.│Part.│TOTAL│
-├──────────┼──────────┼──────────┼──────┼────────┼─────┼─────┼─────┼───────┼─────┼────┼─────┼─────┤
-│ NÁJERA   │ ANDREA   │ ...      │ 74%  │   5    │  4  │  5  │ 14  │   9   │  3  │ 3  │  1  │  7  │
-└──────────┴──────────┴──────────┴──────┴────────┴─────┴─────┴─────┴───────┴─────┴────┴─────┴─────┘
-  Columnas azules = puntaje directo   |   Columnas verdes = criterios de rúbrica + total
+┌─────────────────────────┬───────────────────────┬───────┬──────────────────────────────────┬──────────┐
+│ Estudiante              │ Email                 │ Prom. │  ACTIVIDAD UNO                   │ ACT DOS  │
+│                         │                       │       │ Criterio1 │ Criterio2 │  TOTAL   │ Punteo   │
+├─────────────────────────┼───────────────────────┼───────┼───────────┼───────────┼──────────┼──────────┤
+│ Andrea Nájera           │ anajera@...            │       │     5     │     9     │    14    │    12    │
+│ Angel Salguero          │ asalguero@...          │       │     4     │     8     │    12    │    10    │
+└─────────────────────────┴───────────────────────┴───────┴───────────┴───────────┴──────────┴──────────┘
+  Columnas azules = puntaje directo   |   Columnas verdes = criterios de rúbrica + TOTAL
 ```
+
+> **Celda vacía** = actividad sin calificar todavía en Classroom.
+
+### Actualizar datos
+
+Cuando agregues nuevas calificaciones en Classroom, usa:
+
+**Rúbricas Classroom → Sincronizar de nuevo (mismo curso)**
+
+No tienes que volver a seleccionar el curso.
+
+---
+
+## Cómo funcionan las rúbricas
+
+El script usa la [Google Classroom API](https://developers.google.com/classroom):
+
+1. Para cada actividad verifica si tiene una **rúbrica configurada en Classroom**
+2. Si tiene rúbrica: extrae los criterios y los puntajes que el docente asignó por criterio (`rubricGrades`)
+3. Si no tiene rúbrica: usa el puntaje total directo (`assignedGrade`)
+
+> Si una actividad tiene rúbrica definida en Classroom pero aún no fue calificada
+> usando los criterios, las columnas de criterio aparecerán vacías aunque haya un punteo total.
 
 ---
 
 ## Un curso por hoja
 
-Classroom exporta un CSV por curso/sección. Para manejar varios cursos,
-crea una hoja de Google Sheets diferente para cada uno y repite los 4 pasos.
+Crea una hoja de Google Sheets diferente para cada curso/sección y repite
+el Paso 1 en cada una.
 
 ---
 
-## Versión Python (alternativa sin Google Sheets)
+## Versión Python (alternativa local)
 
-Si prefieres trabajar localmente con Excel, el archivo `procesar.py` hace
-lo mismo desde la terminal. Requiere Python 3.8+ y las librerías de
+Si prefieres trabajar con archivos Excel descargados, el archivo `procesar.py`
+hace lo mismo sin conexión a internet. Requiere Python 3.8+ y las librerías de
 `requirements.txt`.
 
 ```bash
