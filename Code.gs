@@ -32,6 +32,7 @@ function onOpen() {
     .addItem('2.  Generar Reporte Final',            'generarReporte')
     .addSeparator()
     .addItem('Sincronizar de nuevo (mismo curso)',   'sincronizarDenuevo')
+    .addItem('Registro Manual por Grupo',            'mostrarRegistroManual')
     .addSeparator()
     .addItem('[Debug] Ver JSON de la API',            'debugVerAPI')
     .addItem('[Debug] Ver contenido de _DATOS',       'debugVerDATOS')
@@ -761,6 +762,118 @@ function debugVerDATOS() {
   hojaDbg.setColumnWidth(1, 1000);
   ss.setActiveSheet(hojaDbg);
   ui.alert('Revisa la hoja "_DEBUG2" para ver el contenido de _DATOS.');
+}
+
+// ============================================================
+// REGISTRO MANUAL POR GRUPO
+// ============================================================
+
+function mostrarRegistroManual() {
+  var ui = SpreadsheetApp.getUi();
+  var datos;
+  try { datos = leerHojaOculta(); }
+  catch (e) { ui.alert('Primero importa un curso (Paso 1).\n\n' + e.message); return; }
+
+  if (datos.estudiantes.length === 0) {
+    ui.alert('No hay estudiantes. Ejecuta el Paso 1 primero.');
+    return;
+  }
+
+  // Construir opciones de actividades
+  var optsAct = datos.actividades.map(function (a) {
+    return '<option value="' + escHtml(a.id) + '">' + escHtml(a.nombre) +
+           ' (/' + a.maxPts + ')' + '</option>';
+  }).join('');
+
+  // Construir filas de estudiantes
+  var filasEst = datos.estudiantes.map(function (e, i) {
+    var bg = i % 2 === 0 ? '#FFFFFF' : '#F5F5F5';
+    return '<tr style="background:' + bg + '">' +
+           '<td style="padding:6px 10px;color:#333">' + escHtml(e.nombre) + '</td>' +
+           '<td style="padding:4px 6px;text-align:center">' +
+           '<input type="number" min="0" step="0.5" ' +
+           'data-uid="' + escHtml(e.id) + '" ' +
+           'style="width:70px;padding:4px 6px;border:1px solid #ccc;border-radius:3px;text-align:center;font-size:13px">' +
+           '</td>' +
+           '</tr>';
+  }).join('');
+
+  var html = HtmlService.createHtmlOutput(
+    '<style>' +
+    'body{font-family:Arial,sans-serif;padding:16px 18px 20px;font-size:13px;color:#333;margin:0}' +
+    'h3{color:#1565C0;margin:0 0 6px;font-size:14px}' +
+    'p{margin:0 0 10px;color:#555;font-size:12px}' +
+    'select{width:100%;padding:7px;font-size:13px;border:1px solid #ccc;border-radius:3px;margin-bottom:14px}' +
+    'table{width:100%;border-collapse:collapse;margin-bottom:16px}' +
+    'th{background:#37474F;color:#fff;padding:7px 10px;text-align:left;font-size:12px}' +
+    'th:last-child{text-align:center}' +
+    '.btn{background:#1565C0;color:#fff;padding:9px 28px;border:none;border-radius:4px;cursor:pointer;font-size:13px;display:block;width:100%;margin-top:4px}' +
+    '.btn:hover{background:#0d47a1}.btn:disabled{background:#90A4AE;cursor:not-allowed}' +
+    '#msg{margin-top:10px;color:#2E7D32;font-size:12px;text-align:center;display:none}' +
+    '</style>' +
+    '<h3>Registro Manual por Grupo</h3>' +
+    '<p>Selecciona la actividad e ingresa el punteo de cada estudiante. Luego presiona <b>Guardar</b>.</p>' +
+    '<select id="actSel">' + optsAct + '</select>' +
+    '<table>' +
+    '<thead><tr><th>Estudiante</th><th>Punteo</th></tr></thead>' +
+    '<tbody>' + filasEst + '</tbody>' +
+    '</table>' +
+    '<button class="btn" id="btnGuardar" onclick="guardar()">Guardar</button>' +
+    '<div id="msg">Guardando…</div>' +
+    '<script>' +
+    'function guardar(){' +
+    '  var actId=document.getElementById("actSel").value;' +
+    '  var inputs=document.querySelectorAll("input[data-uid]");' +
+    '  var punteos={};' +
+    '  for(var i=0;i<inputs.length;i++){' +
+    '    var v=inputs[i].value.trim();' +
+    '    if(v!=="") punteos[inputs[i].getAttribute("data-uid")]=parseFloat(v);' +
+    '  }' +
+    '  document.getElementById("btnGuardar").disabled=true;' +
+    '  document.getElementById("msg").style.display="block";' +
+    '  google.script.run' +
+    '    .withSuccessHandler(function(r){alert(r);google.script.host.close();})' +
+    '    .withFailureHandler(function(e){' +
+    '      alert("Error: "+e.message);' +
+    '      document.getElementById("btnGuardar").disabled=false;' +
+    '      document.getElementById("msg").style.display="none";})' +
+    '    .guardarPunteosManual(actId,punteos);' +
+    '}' +
+    '</script>'
+  ).setWidth(420).setHeight(520).setTitle('Registro Manual por Grupo');
+
+  ui.showModalDialog(html, 'Registro Manual por Grupo');
+}
+
+// Guarda punteos ingresados manualmente en _DATOS (sección PUNTEOS)
+function guardarPunteosManual(actId, punteos) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var h  = ss.getSheetByName(H_DATOS);
+  if (!h) throw new Error('No hay datos importados. Ejecuta el Paso 1.');
+
+  var datos = h.getDataRange().getValues();
+  var modo  = null;
+  var countSaved = 0;
+
+  for (var r = 0; r < datos.length; r++) {
+    var tag = String(datos[r][0]).trim().toUpperCase();
+    if (tag === 'PUNTEOS') { modo = 'PUN'; continue; }
+    if (modo !== 'PUN') continue;
+    if (!datos[r][0]) continue;
+
+    var rowActId = String(datos[r][0]).trim();
+    var rowEstId = String(datos[r][1]).trim();
+
+    if (rowActId === actId && punteos.hasOwnProperty(rowEstId)) {
+      h.getRange(r + 1, 3).setValue(punteos[rowEstId]);
+      countSaved++;
+    }
+  }
+
+  return (
+    'Punteos guardados: ' + countSaved + '\n\n' +
+    'Vuelve a ejecutar "2. Generar Reporte Final" para actualizar el reporte.'
+  );
 }
 
 // ============================================================
