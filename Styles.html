@@ -1,0 +1,147 @@
+<style>
+  html, body { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+
+  /* Scrollbar suave */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Patrón sutil en header */
+  .header-pattern {
+    background-image:
+      radial-gradient(circle at 20% 20%, rgba(255,255,255,0.25) 0, transparent 40%),
+      radial-gradient(circle at 80% 60%, rgba(255,255,255,0.18) 0, transparent 40%);
+  }
+
+  /* Tabs */
+  .tab-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.85rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #64748b;
+    border-bottom: 3px solid transparent;
+    white-space: nowrap;
+    transition: color .2s, border-color .2s, background-color .2s;
+  }
+  .tab-btn:hover { color: #1e40af; background: #f8fafc; }
+  .tab-active {
+    color: #1e40af !important;
+    border-bottom-color: #1e40af !important;
+    background: linear-gradient(180deg, transparent 70%, rgba(30,64,175,0.06) 100%);
+  }
+
+  /* Sortable headers */
+  .sortable { cursor: pointer; user-select: none; transition: color .2s; }
+  .sortable:hover { color: #1e40af; }
+  .sortable.asc::after  { content: ' ▲'; font-size: 0.7em; color: #1e40af; }
+  .sortable.desc::after { content: ' ▼'; font-size: 0.7em; color: #1e40af; }
+
+  /* Filas de la tabla */
+  tr.fila-clasifica {
+    background: linear-gradient(90deg, rgba(16,185,129,0.06), transparent 40%);
+    border-left: 3px solid #10b981;
+  }
+  tr.fila-clasifica:hover { background: linear-gradient(90deg, rgba(16,185,129,0.12), rgba(16,185,129,0.02)); }
+  tr.fila-equipo { transition: background .15s, transform .15s; cursor: pointer; }
+  tr.fila-equipo:hover { background: #f1f5f9; }
+
+  .badge-pos {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    font-weight: 800;
+    font-size: 0.8rem;
+    background: #e2e8f0;
+    color: #475569;
+  }
+  .badge-pos.p1 { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #fff; box-shadow: 0 2px 6px rgba(245,158,11,0.4); }
+  .badge-pos.p2 { background: linear-gradient(135deg, #cbd5e1, #94a3b8); color: #fff; }
+  .badge-pos.p3 { background: linear-gradient(135deg, #fbbf24, #b45309); color: #fff; }
+
+  .escudo {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: #f1f5f9;
+    border: 2px solid #e2e8f0;
+  }
+  .escudo-fallback {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: #fff;
+    background: linear-gradient(135deg, #1e40af, #059669);
+    flex-shrink: 0;
+  }
+
+  /* Dots forma */
+  .dot-g, .dot-e, .dot-p {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+  }
+  .dot-g { background: #10b981; box-shadow: 0 0 0 2px #d1fae5; }
+  .dot-e { background: #64748b; box-shadow: 0 0 0 2px #e2e8f0; }
+  .dot-p { background: #ef4444; box-shadow: 0 0 0 2px #fee2e2; }
+
+  /* Spinner */
+  .spin { animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Fade-in contenido */
+  .fade-in { animation: fadeIn .35s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* Modal slide-in */
+  .modal-in { animation: slideUp .25s ease-out; }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+  @media (min-width: 640px) {
+    .modal-in { animation: zoomIn .2s ease-out; }
+    @keyframes zoomIn { from { opacity: 0; transform: scale(.95); } to { opacity: 1; transform: scale(1); } }
+  }
+
+  /* Chips jornada */
+  .chip-jornada {
+    padding: 0.45rem 0.9rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    color: #475569;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .chip-jornada:hover { border-color: #1e40af; color: #1e40af; }
+  .chip-jornada.active {
+    background: #1e40af;
+    color: #fff;
+    border-color: #1e40af;
+    box-shadow: 0 2px 8px rgba(30,64,175,0.25);
+  }
+
+  /* Barras de goles */
+  .bar-outer {
+    background: #e2e8f0;
+    height: 8px;
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .bar-inner {
+    height: 100%;
+    background: linear-gradient(90deg, #1e40af, #059669);
+    border-radius: 999px;
+    transition: width .8s cubic-bezier(.2,.8,.2,1);
+  }
+
+  /* Refresh spin */
+  .refreshing { animation: spin 0.7s linear infinite; }
+</style>

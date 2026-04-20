@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tabla de Posiciones</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <?!= include('Styles'); ?>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased">
+
+  <!-- HEADER -->
+  <header id="header" class="relative overflow-hidden text-white shadow-lg">
+    <div class="absolute inset-0 bg-gradient-to-br from-blue-800 via-blue-700 to-emerald-600" id="headerBg"></div>
+    <div class="absolute inset-0 opacity-20 header-pattern"></div>
+    <div class="relative max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      <div class="flex items-center gap-3 sm:gap-4">
+        <div id="logoWrap" class="hidden sm:flex w-14 h-14 rounded-full bg-white/15 backdrop-blur items-center justify-center shadow-inner">
+          <img id="logoImg" alt="" class="w-12 h-12 object-contain rounded-full hidden" />
+          <span id="logoEmoji" class="text-3xl">⚽</span>
+        </div>
+        <div class="flex-1 min-w-0">
+          <h1 id="titulo" class="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight truncate">
+            Campeonato de Fútbol
+          </h1>
+          <p id="subtitulo" class="text-sm sm:text-base text-white/80 mt-1">Temporada</p>
+        </div>
+        <button id="btnRefresh"
+          class="shrink-0 inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 active:scale-95 transition px-3 sm:px-4 py-2 rounded-full text-sm font-semibold backdrop-blur">
+          <svg id="refreshIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 4v5h.582M20 20v-5h-.581M5.21 9A7.5 7.5 0 0 1 18.5 6.5M18.79 15A7.5 7.5 0 0 1 5.5 17.5"/>
+          </svg>
+          <span class="hidden sm:inline">Actualizar</span>
+        </button>
+      </div>
+
+      <!-- Stats chips -->
+      <div id="chipsStats" class="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+        <div class="bg-white/10 backdrop-blur rounded-xl px-3 py-2 sm:px-4 sm:py-3">
+          <div class="text-[11px] uppercase tracking-wider text-white/70">Equipos</div>
+          <div id="statEquipos" class="text-xl sm:text-2xl font-bold">—</div>
+        </div>
+        <div class="bg-white/10 backdrop-blur rounded-xl px-3 py-2 sm:px-4 sm:py-3">
+          <div class="text-[11px] uppercase tracking-wider text-white/70">Jornadas</div>
+          <div id="statJornadas" class="text-xl sm:text-2xl font-bold">—</div>
+        </div>
+        <div class="bg-white/10 backdrop-blur rounded-xl px-3 py-2 sm:px-4 sm:py-3">
+          <div class="text-[11px] uppercase tracking-wider text-white/70">Partidos</div>
+          <div id="statPartidos" class="text-xl sm:text-2xl font-bold">—</div>
+        </div>
+        <div class="bg-white/10 backdrop-blur rounded-xl px-3 py-2 sm:px-4 sm:py-3">
+          <div class="text-[11px] uppercase tracking-wider text-white/70">Goles</div>
+          <div id="statGoles" class="text-xl sm:text-2xl font-bold">—</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- TABS -->
+  <nav class="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
+    <div class="max-w-6xl mx-auto px-2 sm:px-6">
+      <div class="flex gap-1 overflow-x-auto no-scrollbar">
+        <button data-tab="tabla" class="tab-btn tab-active">
+          <span class="text-base">🏆</span><span>Tabla</span>
+        </button>
+        <button data-tab="partidos" class="tab-btn">
+          <span class="text-base">📅</span><span>Partidos</span>
+        </button>
+        <button data-tab="equipos" class="tab-btn">
+          <span class="text-base">🛡️</span><span>Equipos</span>
+        </button>
+        <button data-tab="goleadores" class="tab-btn">
+          <span class="text-base">🥅</span><span>Goles</span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- LOADER -->
+  <div id="loader" class="max-w-6xl mx-auto px-4 py-16 text-center">
+    <div class="inline-block w-10 h-10 border-4 border-slate-200 border-t-blue-600 rounded-full spin"></div>
+    <p class="mt-4 text-slate-500">Cargando datos del campeonato…</p>
+  </div>
+
+  <!-- ERROR -->
+  <div id="errorBox" class="hidden max-w-3xl mx-auto my-10 mx-4 bg-red-50 border border-red-200 text-red-800 rounded-xl p-5">
+    <div class="font-bold mb-1">No se pudieron cargar los datos.</div>
+    <div id="errorMsg" class="text-sm"></div>
+  </div>
+
+  <!-- MAIN -->
+  <main id="main" class="hidden max-w-6xl mx-auto px-3 sm:px-6 py-6 sm:py-8 space-y-6">
+
+    <!-- ========== TAB TABLA ========== -->
+    <section id="tab-tabla" class="tab-panel">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 sm:p-5 border-b border-slate-100">
+          <div>
+            <h2 class="text-lg sm:text-xl font-bold text-slate-900">Tabla de Posiciones</h2>
+            <p class="text-xs sm:text-sm text-slate-500">Clic en los encabezados para ordenar. Verde = clasificación.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="filtroEquipo" type="search" placeholder="Buscar equipo…"
+              class="w-full sm:w-56 text-sm px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
+          </div>
+        </div>
+
+        <!-- Desktop table -->
+        <div class="overflow-x-auto hidden sm:block">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider">
+              <tr>
+                <th class="px-3 py-3 text-left">#</th>
+                <th class="px-3 py-3 text-left">Equipo</th>
+                <th data-sort="pj" class="sortable px-2 py-3 text-center">PJ</th>
+                <th data-sort="pg" class="sortable px-2 py-3 text-center">PG</th>
+                <th data-sort="pe" class="sortable px-2 py-3 text-center">PE</th>
+                <th data-sort="pp" class="sortable px-2 py-3 text-center">PP</th>
+                <th data-sort="gf" class="sortable px-2 py-3 text-center">GF</th>
+                <th data-sort="gc" class="sortable px-2 py-3 text-center">GC</th>
+                <th data-sort="dg" class="sortable px-2 py-3 text-center">DG</th>
+                <th data-sort="pts" class="sortable px-3 py-3 text-center font-extrabold text-slate-800">PTS</th>
+                <th class="px-3 py-3 text-center">Forma</th>
+              </tr>
+            </thead>
+            <tbody id="tablaBody" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+
+        <!-- Mobile cards -->
+        <div id="tablaCards" class="sm:hidden divide-y divide-slate-100"></div>
+
+        <!-- Leyenda -->
+        <div class="flex flex-wrap items-center gap-4 p-4 text-xs text-slate-500 border-t border-slate-100 bg-slate-50">
+          <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-emerald-500"></span>Clasifica</div>
+          <div class="flex items-center gap-2"><span class="dot-g"></span>Ganó</div>
+          <div class="flex items-center gap-2"><span class="dot-e"></span>Empató</div>
+          <div class="flex items-center gap-2"><span class="dot-p"></span>Perdió</div>
+          <div class="ml-auto">Victoria 3 pts · Empate 1 pt</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== TAB PARTIDOS ========== -->
+    <section id="tab-partidos" class="tab-panel hidden">
+      <div class="flex flex-wrap gap-2 mb-4" id="filtroJornadas"></div>
+      <div id="listaPartidos" class="space-y-6"></div>
+    </section>
+
+    <!-- ========== TAB EQUIPOS ========== -->
+    <section id="tab-equipos" class="tab-panel hidden">
+      <div id="gridEquipos" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    </section>
+
+    <!-- ========== TAB GOLEADORES ========== -->
+    <section id="tab-goleadores" class="tab-panel hidden">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="p-4 sm:p-5 border-b border-slate-100">
+          <h2 class="text-lg sm:text-xl font-bold text-slate-900">Goles por Equipo</h2>
+          <p class="text-xs sm:text-sm text-slate-500">Ranking de goles a favor.</p>
+        </div>
+        <div id="listaGoleadores" class="p-4 sm:p-5 space-y-3"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODAL DETALLE EQUIPO -->
+  <div id="modal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" id="modalBg"></div>
+    <div class="absolute inset-x-0 bottom-0 sm:inset-0 sm:flex sm:items-center sm:justify-center p-0 sm:p-4">
+      <div id="modalCard"
+        class="bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[85vh] overflow-y-auto modal-in">
+        <div id="modalHeader" class="p-5 text-white rounded-t-2xl"></div>
+        <div id="modalBody" class="p-5"></div>
+        <div class="p-4 border-t border-slate-100 text-right">
+          <button id="btnCerrarModal" class="px-4 py-2 text-sm font-semibold rounded-lg bg-slate-100 hover:bg-slate-200">
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="max-w-6xl mx-auto px-4 py-6 text-center text-xs text-slate-400">
+    <span id="footerUpdate">Actualizado —</span>
+  </footer>
+
+  <?!= include('Script'); ?>
+</body>
+</html>
