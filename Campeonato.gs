@@ -32,8 +32,10 @@ function crearHojasCampeonato() {
   let hojaEquipos = ss.getSheetByName(SHEET_EQUIPOS);
   if (!hojaEquipos) {
     hojaEquipos = ss.insertSheet(SHEET_EQUIPOS);
-    hojaEquipos.getRange('A1:D1').setValues([['ID', 'Nombre', 'Grado/Sección', 'Escudo (URL)']]);
-    hojaEquipos.getRange('A1:D1')
+    hojaEquipos.getRange('A1:E1').setValues([[
+      'ID', 'Nombre', 'Grado/Sección', 'Grupo', 'Escudo (URL)'
+    ]]);
+    hojaEquipos.getRange('A1:E1')
       .setFontWeight('bold')
       .setBackground('#1e40af')
       .setFontColor('#ffffff')
@@ -41,8 +43,15 @@ function crearHojasCampeonato() {
     hojaEquipos.setFrozenRows(1);
     hojaEquipos.setColumnWidth(1, 60);
     hojaEquipos.setColumnWidth(2, 220);
-    hojaEquipos.setColumnWidth(3, 160);
-    hojaEquipos.setColumnWidth(4, 320);
+    hojaEquipos.setColumnWidth(3, 140);
+    hojaEquipos.setColumnWidth(4, 130);
+    hojaEquipos.setColumnWidth(5, 300);
+
+    const reglaGrupo = SpreadsheetApp.newDataValidation()
+      .requireValueInList(['Grupo A', 'Grupo B', 'Femenino'], true)
+      .setAllowInvalid(true)
+      .build();
+    hojaEquipos.getRange('D2:D1000').setDataValidation(reglaGrupo);
   }
 
   let hojaPartidos = ss.getSheetByName(SHEET_PARTIDOS);
@@ -77,13 +86,14 @@ function crearHojasCampeonato() {
   if (!hojaConfig) {
     hojaConfig = ss.insertSheet(SHEET_CONFIG);
     hojaConfig.getRange('A1:B1').setValues([['Parámetro', 'Valor']]);
-    hojaConfig.getRange('A2:B7').setValues([
+    hojaConfig.getRange('A2:B8').setValues([
       ['Nombre del Campeonato', 'Campeonato Escolar de Fútbol'],
       ['Subtítulo', 'Temporada 2026'],
       ['Color Primario', '#1e40af'],
       ['Color Secundario', '#059669'],
       ['Logo (URL)', ''],
-      ['Clasifican (primeros N)', 4]
+      ['Clasifican (primeros N)', 2],
+      ['Orden de grupos', 'Grupo A, Grupo B, Femenino']
     ]);
     hojaConfig.getRange('A1:B1')
       .setFontWeight('bold')
@@ -107,32 +117,57 @@ function cargarDatosEjemplo() {
   const hojaEquipos = ss.getSheetByName(SHEET_EQUIPOS);
   const hojaPartidos = ss.getSheetByName(SHEET_PARTIDOS);
 
-  hojaEquipos.getRange('A2:D100').clearContent();
+  hojaEquipos.getRange('A2:E100').clearContent();
   hojaPartidos.getRange('A2:G200').clearContent();
 
   const equipos = [
-    [1, 'Leones FC',   '6to A', ''],
-    [2, 'Tigres Rojos','6to B', ''],
-    [3, 'Águilas',     '5to A', ''],
-    [4, 'Halcones',    '5to B', ''],
-    [5, 'Panteras',    '4to A', ''],
-    [6, 'Cóndores',    '4to B', '']
+    // Grupo A (masculino)
+    [1, 'Leones FC',    '6to A', 'Grupo A',  ''],
+    [2, 'Tigres Rojos', '6to B', 'Grupo A',  ''],
+    [3, 'Águilas',      '5to A', 'Grupo A',  ''],
+    [4, 'Halcones',     '5to B', 'Grupo A',  ''],
+    // Grupo B (masculino)
+    [5, 'Panteras',     '4to A', 'Grupo B',  ''],
+    [6, 'Cóndores',     '4to B', 'Grupo B',  ''],
+    [7, 'Lobos',        '3ro A', 'Grupo B',  ''],
+    [8, 'Toros',        '3ro B', 'Grupo B',  ''],
+    // Femenino
+    [9,  'Estrellas',   '6to A', 'Femenino', ''],
+    [10, 'Cometas',     '6to B', 'Femenino', ''],
+    [11, 'Gacelas',     '5to A', 'Femenino', ''],
+    [12, 'Fénix',       '5to B', 'Femenino', '']
   ];
-  hojaEquipos.getRange(2, 1, equipos.length, 4).setValues(equipos);
+  hojaEquipos.getRange(2, 1, equipos.length, 5).setValues(equipos);
 
   const partidos = [
+    // Jornada 1
     [1, new Date(2026, 3, 5),  'Leones FC',    3, 'Tigres Rojos', 1, 'Jugado'],
     [1, new Date(2026, 3, 5),  'Águilas',      2, 'Halcones',     2, 'Jugado'],
     [1, new Date(2026, 3, 5),  'Panteras',     1, 'Cóndores',     0, 'Jugado'],
-    [2, new Date(2026, 3, 12), 'Tigres Rojos', 2, 'Águilas',      0, 'Jugado'],
-    [2, new Date(2026, 3, 12), 'Halcones',     1, 'Panteras',     3, 'Jugado'],
-    [2, new Date(2026, 3, 12), 'Cóndores',     1, 'Leones FC',    2, 'Jugado'],
-    [3, new Date(2026, 3, 19), 'Leones FC',    4, 'Águilas',      1, 'Jugado'],
-    [3, new Date(2026, 3, 19), 'Tigres Rojos', 3, 'Panteras',     3, 'Jugado'],
-    [3, new Date(2026, 3, 19), 'Halcones',     0, 'Cóndores',     2, 'Jugado'],
-    [4, new Date(2026, 3, 26), 'Leones FC',    '', 'Halcones',    '', 'Pendiente'],
-    [4, new Date(2026, 3, 26), 'Tigres Rojos', '', 'Cóndores',    '', 'Pendiente'],
-    [4, new Date(2026, 3, 26), 'Águilas',      '', 'Panteras',    '', 'Pendiente']
+    [1, new Date(2026, 3, 5),  'Lobos',        2, 'Toros',        2, 'Jugado'],
+    [1, new Date(2026, 3, 5),  'Estrellas',    3, 'Cometas',      2, 'Jugado'],
+    [1, new Date(2026, 3, 5),  'Gacelas',      1, 'Fénix',        1, 'Jugado'],
+    // Jornada 2
+    [2, new Date(2026, 3, 12), 'Leones FC',    2, 'Águilas',      0, 'Jugado'],
+    [2, new Date(2026, 3, 12), 'Tigres Rojos', 1, 'Halcones',     3, 'Jugado'],
+    [2, new Date(2026, 3, 12), 'Panteras',     2, 'Lobos',        1, 'Jugado'],
+    [2, new Date(2026, 3, 12), 'Cóndores',     0, 'Toros',        2, 'Jugado'],
+    [2, new Date(2026, 3, 12), 'Estrellas',    4, 'Gacelas',      1, 'Jugado'],
+    [2, new Date(2026, 3, 12), 'Cometas',      2, 'Fénix',        0, 'Jugado'],
+    // Jornada 3
+    [3, new Date(2026, 3, 19), 'Leones FC',    1, 'Halcones',     1, 'Jugado'],
+    [3, new Date(2026, 3, 19), 'Tigres Rojos', 2, 'Águilas',      2, 'Jugado'],
+    [3, new Date(2026, 3, 19), 'Panteras',     3, 'Toros',        1, 'Jugado'],
+    [3, new Date(2026, 3, 19), 'Cóndores',     1, 'Lobos',        1, 'Jugado'],
+    [3, new Date(2026, 3, 19), 'Estrellas',    2, 'Fénix',        2, 'Jugado'],
+    [3, new Date(2026, 3, 19), 'Cometas',      1, 'Gacelas',      3, 'Jugado'],
+    // Jornada 4 (pendiente — vueltas)
+    [4, new Date(2026, 3, 26), 'Tigres Rojos', '', 'Leones FC',   '', 'Pendiente'],
+    [4, new Date(2026, 3, 26), 'Halcones',     '', 'Águilas',     '', 'Pendiente'],
+    [4, new Date(2026, 3, 26), 'Cóndores',     '', 'Panteras',    '', 'Pendiente'],
+    [4, new Date(2026, 3, 26), 'Toros',        '', 'Lobos',       '', 'Pendiente'],
+    [4, new Date(2026, 3, 26), 'Cometas',      '', 'Estrellas',   '', 'Pendiente'],
+    [4, new Date(2026, 3, 26), 'Fénix',        '', 'Gacelas',     '', 'Pendiente']
   ];
   hojaPartidos.getRange(2, 1, partidos.length, 7).setValues(partidos);
   hojaPartidos.getRange(2, 2, partidos.length, 1).setNumberFormat('dd/MM/yyyy');
@@ -197,9 +232,10 @@ function include(filename) {
 function getDatosCampeonato() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const equipos = leerEquipos(ss.getSheetByName(SHEET_EQUIPOS));
-  const partidos = leerPartidos(ss.getSheetByName(SHEET_PARTIDOS));
   const config = leerConfig(ss.getSheetByName(SHEET_CONFIG));
-  const tabla = calcularTabla(equipos, partidos);
+  const partidos = leerPartidos(ss.getSheetByName(SHEET_PARTIDOS), equipos);
+  const tablas = calcularTablasPorGrupo(equipos, partidos);
+  const grupos = ordenarGrupos(Object.keys(tablas), config.ordenGrupos);
   const jornadas = [...new Set(partidos.map(p => p.jornada))]
     .filter(j => j > 0)
     .sort((a, b) => a - b);
@@ -208,27 +244,42 @@ function getDatosCampeonato() {
     config,
     equipos,
     partidos,
-    tabla,
+    tablas,
+    grupos,
     jornadas,
     actualizado: new Date().toISOString()
   };
 }
 
+function ordenarGrupos(detectados, orden) {
+  const result = [];
+  (orden || []).forEach(g => {
+    if (detectados.indexOf(g) !== -1 && result.indexOf(g) === -1) result.push(g);
+  });
+  detectados.sort().forEach(g => {
+    if (result.indexOf(g) === -1) result.push(g);
+  });
+  return result;
+}
+
 function leerEquipos(hoja) {
   if (!hoja || hoja.getLastRow() < 2) return [];
-  const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 4).getValues();
+  const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 5).getValues();
   return datos
     .filter(r => r[1])
     .map(r => ({
       id: r[0],
       nombre: String(r[1]).trim(),
       grado: String(r[2] || '').trim(),
-      escudo: String(r[3] || '').trim()
+      grupo: String(r[3] || '').trim() || 'General',
+      escudo: String(r[4] || '').trim()
     }));
 }
 
-function leerPartidos(hoja) {
+function leerPartidos(hoja, equipos) {
   if (!hoja || hoja.getLastRow() < 2) return [];
+  const grupoDe = {};
+  (equipos || []).forEach(e => { grupoDe[e.nombre] = e.grupo; });
   const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 7).getValues();
   return datos
     .filter(r => r[2] && r[4])
@@ -237,15 +288,20 @@ function leerPartidos(hoja) {
       const gv = r[5] === '' || r[5] === null ? null : Number(r[5]);
       const estadoRaw = String(r[6] || '').trim();
       const estado = estadoRaw || (gl !== null && gv !== null ? 'Jugado' : 'Pendiente');
+      const local = String(r[2]).trim();
+      const visitante = String(r[4]).trim();
+      const grupoL = grupoDe[local] || null;
+      const grupoV = grupoDe[visitante] || null;
       return {
         id: i + 1,
         jornada: Number(r[0]) || 0,
         fecha: r[1] instanceof Date ? r[1].toISOString() : String(r[1] || ''),
-        local: String(r[2]).trim(),
+        local: local,
         golesLocal: gl,
-        visitante: String(r[4]).trim(),
+        visitante: visitante,
         golesVisitante: gv,
-        estado: estado
+        estado: estado,
+        grupo: grupoL && grupoL === grupoV ? grupoL : (grupoL || grupoV || null)
       };
     });
 }
@@ -257,28 +313,53 @@ function leerConfig(hoja) {
     colorPrimario: '#1e40af',
     colorSecundario: '#059669',
     logo: '',
-    clasifican: 4
+    clasifican: 2,
+    ordenGrupos: []
   };
   if (!hoja || hoja.getLastRow() < 2) return defaults;
   const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 2).getValues();
   const map = {};
   datos.forEach(r => { if (r[0]) map[String(r[0]).trim()] = r[1]; });
+  const ordenRaw = String(map['Orden de grupos'] || '').trim();
+  const ordenGrupos = ordenRaw
+    ? ordenRaw.split(',').map(s => s.trim()).filter(Boolean)
+    : [];
   return {
     nombre: map['Nombre del Campeonato'] || defaults.nombre,
     subtitulo: map['Subtítulo'] || defaults.subtitulo,
     colorPrimario: map['Color Primario'] || defaults.colorPrimario,
     colorSecundario: map['Color Secundario'] || defaults.colorSecundario,
     logo: map['Logo (URL)'] || defaults.logo,
-    clasifican: Number(map['Clasifican (primeros N)']) || defaults.clasifican
+    clasifican: Number(map['Clasifican (primeros N)']) || defaults.clasifican,
+    ordenGrupos: ordenGrupos
   };
 }
 
-function calcularTabla(equipos, partidos) {
-  const tabla = {};
+function calcularTablasPorGrupo(equipos, partidos) {
+  const porGrupo = {};
   equipos.forEach(e => {
+    const g = e.grupo || 'General';
+    if (!porGrupo[g]) porGrupo[g] = [];
+    porGrupo[g].push(e);
+  });
+
+  const result = {};
+  Object.keys(porGrupo).forEach(grupo => {
+    result[grupo] = calcularTablaGrupo(porGrupo[grupo], partidos);
+  });
+  return result;
+}
+
+function calcularTablaGrupo(equiposGrupo, partidos) {
+  const nombres = {};
+  equiposGrupo.forEach(e => { nombres[e.nombre] = true; });
+
+  const tabla = {};
+  equiposGrupo.forEach(e => {
     tabla[e.nombre] = {
       equipo: e.nombre,
       grado: e.grado,
+      grupo: e.grupo,
       escudo: e.escudo,
       pj: 0, pg: 0, pe: 0, pp: 0,
       gf: 0, gc: 0, dg: 0, pts: 0,
@@ -292,9 +373,9 @@ function calcularTabla(equipos, partidos) {
     .forEach(p => {
       if (p.estado !== 'Jugado') return;
       if (p.golesLocal === null || p.golesVisitante === null) return;
+      if (!nombres[p.local] || !nombres[p.visitante]) return;
       const L = tabla[p.local];
       const V = tabla[p.visitante];
-      if (!L || !V) return;
 
       L.pj++; V.pj++;
       L.gf += p.golesLocal; L.gc += p.golesVisitante;

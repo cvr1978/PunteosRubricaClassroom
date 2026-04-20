@@ -128,6 +128,27 @@
     box-shadow: 0 2px 8px rgba(30,64,175,0.25);
   }
 
+  /* Chips grupo */
+  .chip-grupo {
+    padding: 0.45rem 1rem;
+    border-radius: 10px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    color: #334155;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all .15s;
+  }
+  .chip-grupo:hover { border-color: #1e40af; color: #1e40af; transform: translateY(-1px); }
+  .chip-grupo.active {
+    background: linear-gradient(135deg, #1e40af, #059669);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 4px 12px rgba(30,64,175,0.3);
+  }
+
   /* Barras de goles */
   .bar-outer {
     background: #e2e8f0;

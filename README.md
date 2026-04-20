@@ -112,13 +112,16 @@ Tailwind) + Google Sites (portada que embebe la Web App).
 
 ## Características
 
+- **Varios grupos** en paralelo (ej. `Grupo A`, `Grupo B`, `Femenino`) con
+  tabla de posiciones independiente por grupo
+- Selector de grupo visible al tope de la Web App (se oculta si solo hay uno)
 - Tabla de posiciones ordenable (PJ, PG, PE, PP, GF, GC, DG, PTS)
 - Cálculo automático: 3 pts victoria, 1 pt empate
 - Desempates: Puntos → Diferencia de goles → Goles a favor
 - Racha de forma (últimos 5 partidos)
-- Listado de partidos filtrable por jornada
+- Listado de partidos filtrable por jornada y por grupo
 - Detalle por equipo en modal (historial de partidos)
-- Ranking de goles por equipo
+- Ranking de goles por equipo dentro del grupo
 - Resaltado de posiciones de clasificación
 - 100% responsivo (móvil, tablet, pantalla)
 - Se actualiza al modificar la hoja
@@ -162,9 +165,13 @@ Recarga Google Sheets → menú **⚽ Campeonato → 1. Crear hojas base**.
 
 Se crean 3 hojas:
 
-- **Equipos** — `ID | Nombre | Grado/Sección | Escudo (URL)`
+- **Equipos** — `ID | Nombre | Grado/Sección | Grupo | Escudo (URL)`
 - **Partidos** — `Jornada | Fecha | Local | Goles L | Visitante | Goles V | Estado`
-- **Config** — nombre del campeonato, colores, logo, cuántos clasifican
+- **Config** — nombre del campeonato, colores, logo, clasificados, orden de grupos
+
+La columna **Grupo** de Equipos admite cualquier texto; por defecto trae
+validación con `Grupo A`, `Grupo B`, `Femenino`. Los partidos se asignan al
+grupo automáticamente según el equipo local.
 
 > Opcional: **⚽ Campeonato → 2. Cargar datos de ejemplo** llena las hojas
 > con 6 equipos y 4 jornadas de muestra para ver el resultado inmediato.
@@ -206,4 +213,7 @@ En la hoja **Config**:
   (ej. `#1e40af`, `#059669`)
 - `Logo (URL)` → URL pública de la imagen del torneo (opcional)
 - `Clasifican (primeros N)` → cuántos primeros puestos se resaltan en verde
+  (aplica por grupo)
+- `Orden de grupos` → lista separada por comas con el orden en que aparecen
+  las pestañas de grupo (ej. `Grupo A, Grupo B, Femenino`)
 

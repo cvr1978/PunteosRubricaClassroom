@@ -4,6 +4,7 @@
 
   const state = {
     data: null,
+    grupoActivo: null,
     jornadaActiva: 'todas',
     orden: { campo: 'pts', dir: 'desc' },
     filtroEquipo: ''
@@ -57,7 +58,7 @@
   // RENDER PRINCIPAL
   // ============================================================
   function render() {
-    const { config, equipos, partidos, tabla, jornadas } = state.data;
+    const { config, equipos, partidos, grupos, jornadas } = state.data;
 
     // Config visual
     $('titulo').textContent = config.nombre;
@@ -72,13 +73,26 @@
         `linear-gradient(135deg, ${config.colorPrimario}, ${config.colorSecundario})`;
     }
 
-    // Stats
+    // Grupo activo (inicial o validado)
+    if (!state.grupoActivo || grupos.indexOf(state.grupoActivo) === -1) {
+      state.grupoActivo = grupos[0] || null;
+    }
+    renderGrupoSelector();
+
+    // Stats globales
     $('statEquipos').textContent = equipos.length;
     $('statJornadas').textContent = jornadas.length;
     const jugados = partidos.filter(p => p.estado === 'Jugado');
     $('statPartidos').textContent = jugados.length + ' / ' + partidos.length;
     const goles = jugados.reduce((s, p) => s + (p.golesLocal || 0) + (p.golesVisitante || 0), 0);
     $('statGoles').textContent = goles;
+
+    // Etiqueta de grupos en el chip de equipos si hay más de uno
+    if (grupos.length > 1) {
+      const txt = grupos.length + ' grupos';
+      const chip = $('statEquipos');
+      chip.innerHTML = equipos.length + ' <span class="text-[10px] text-white/70 font-semibold align-middle">· ' + grupos.length + ' grupos</span>';
+    }
 
     // Fecha de actualización
     const fecha = new Date(state.data.actualizado);
@@ -96,11 +110,51 @@
     renderGoleadores();
   }
 
+  function renderGrupoSelector() {
+    const { grupos } = state.data;
+    const wrap = $('grupoSelectorWrap');
+    const cont = $('grupoSelector');
+    cont.innerHTML = '';
+    if (!grupos || grupos.length <= 1) {
+      wrap.classList.add('hidden');
+      return;
+    }
+    wrap.classList.remove('hidden');
+    grupos.forEach(g => {
+      const btn = document.createElement('button');
+      btn.className = 'chip-grupo' + (g === state.grupoActivo ? ' active' : '');
+      btn.textContent = g;
+      btn.addEventListener('click', () => {
+        state.grupoActivo = g;
+        renderGrupoSelector();
+        renderTabla();
+        renderPartidos();
+        renderEquipos();
+        renderGoleadores();
+      });
+      cont.appendChild(btn);
+    });
+  }
+
+  function getTablaActual() {
+    if (!state.data) return [];
+    if (!state.grupoActivo) return [];
+    return state.data.tablas[state.grupoActivo] || [];
+  }
+
+  function getPartidosActuales() {
+    if (!state.data) return [];
+    const todos = state.data.partidos;
+    if (!state.grupoActivo || state.data.grupos.length <= 1) return todos;
+    return todos.filter(p => p.grupo === state.grupoActivo);
+  }
+
   // ============================================================
   // TABLA DE POSICIONES
   // ============================================================
   function renderTabla() {
-    const { tabla, config } = state.data;
+    const { config } = state.data;
+    const tabla = getTablaActual();
     const clasifican = config.clasifican || 0;
 
     const filtro = state.filtroEquipo.toLowerCase().trim();
@@ -211,7 +265,10 @@
   // PARTIDOS
   // ============================================================
   function renderPartidos() {
-    const { partidos, jornadas } = state.data;
+    const partidos = getPartidosActuales();
+    const jornadas = [...new Set(partidos.map(p => p.jornada))]
+      .filter(j => j > 0)
+      .sort((a, b) => a - b);
 
     // Chips de filtro de jornada
     const cont = $('filtroJornadas');
@@ -313,7 +370,7 @@
   // EQUIPOS (cards)
   // ============================================================
   function renderEquipos() {
-    const { tabla } = state.data;
+    const tabla = getTablaActual();
     const grid = $('gridEquipos');
     grid.innerHTML = '';
     if (tabla.length === 0) {
@@ -358,7 +415,7 @@
   // GOLEADORES (goles por equipo)
   // ============================================================
   function renderGoleadores() {
-    const { tabla } = state.data;
+    const tabla = getTablaActual();
     const cont = $('listaGoleadores');
     cont.innerHTML = '';
     const ordenado = tabla.slice().sort((a, b) => b.gf - a.gf);
@@ -390,8 +447,12 @@
   // MODAL DETALLE EQUIPO
   // ============================================================
   function abrirDetalleEquipo(nombre) {
-    const { tabla, partidos, config } = state.data;
-    const t = tabla.find(x => x.equipo === nombre);
+    const { tablas, partidos, config } = state.data;
+    let t = null;
+    for (const g of Object.keys(tablas)) {
+      const found = tablas[g].find(x => x.equipo === nombre);
+      if (found) { t = found; break; }
+    }
     if (!t) return;
 
     $('modalHeader').style.background =
