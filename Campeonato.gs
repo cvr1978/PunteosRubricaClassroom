@@ -6,10 +6,14 @@
 const SHEET_EQUIPOS = 'Equipos';
 const SHEET_PARTIDOS = 'Partidos';
 const SHEET_CONFIG = 'Config';
+const SHEET_GOLEADORES = 'Goleadores';
+const SHEET_ELIMINATORIAS = 'Eliminatorias';
 
 const PUNTOS_VICTORIA = 3;
 const PUNTOS_EMPATE = 1;
 const PUNTOS_DERROTA = 0;
+
+const FASES_ORDEN = ['Octavos', 'Cuartos', 'Semifinal', 'Final', 'Tercer Lugar'];
 
 // ============================================================
 // MENÚ
@@ -103,9 +107,63 @@ function crearHojasCampeonato() {
     hojaConfig.setColumnWidth(2, 320);
   }
 
+  let hojaGoleadores = ss.getSheetByName(SHEET_GOLEADORES);
+  if (!hojaGoleadores) {
+    hojaGoleadores = ss.insertSheet(SHEET_GOLEADORES);
+    hojaGoleadores.getRange('A1:C1').setValues([['Jugador', 'Equipo', 'Goles']]);
+    hojaGoleadores.getRange('A1:C1')
+      .setFontWeight('bold')
+      .setBackground('#b45309')
+      .setFontColor('#ffffff')
+      .setHorizontalAlignment('center');
+    hojaGoleadores.setFrozenRows(1);
+    hojaGoleadores.setColumnWidth(1, 240);
+    hojaGoleadores.setColumnWidth(2, 180);
+    hojaGoleadores.setColumnWidth(3, 90);
+  }
+
+  let hojaElim = ss.getSheetByName(SHEET_ELIMINATORIAS);
+  if (!hojaElim) {
+    hojaElim = ss.insertSheet(SHEET_ELIMINATORIAS);
+    hojaElim.getRange('A1:J1').setValues([[
+      'Fase', 'Rama', 'Fecha',
+      'Equipo 1', 'Goles 1',
+      'Equipo 2', 'Goles 2',
+      'Penales 1', 'Penales 2',
+      'Estado'
+    ]]);
+    hojaElim.getRange('A1:J1')
+      .setFontWeight('bold')
+      .setBackground('#7c2d12')
+      .setFontColor('#ffffff')
+      .setHorizontalAlignment('center');
+    hojaElim.setFrozenRows(1);
+    hojaElim.setColumnWidth(1, 110);
+    hojaElim.setColumnWidth(2, 120);
+    hojaElim.setColumnWidth(3, 110);
+    hojaElim.setColumnWidth(4, 170);
+    hojaElim.setColumnWidth(5, 90);
+    hojaElim.setColumnWidth(6, 170);
+    hojaElim.setColumnWidth(7, 90);
+    hojaElim.setColumnWidth(8, 90);
+    hojaElim.setColumnWidth(9, 90);
+    hojaElim.setColumnWidth(10, 110);
+
+    const reglaFase = SpreadsheetApp.newDataValidation()
+      .requireValueInList(FASES_ORDEN, true)
+      .setAllowInvalid(false)
+      .build();
+    hojaElim.getRange('A2:A1000').setDataValidation(reglaFase);
+
+    const reglaEstado = SpreadsheetApp.newDataValidation()
+      .requireValueInList(['Jugado', 'Pendiente', 'Suspendido'], true)
+      .build();
+    hojaElim.getRange('J2:J1000').setDataValidation(reglaEstado);
+  }
+
   SpreadsheetApp.getUi().alert(
     '✅ Hojas creadas/verificadas',
-    'Se prepararon las hojas:\n\n• Equipos\n• Partidos\n• Config\n\n' +
+    'Se prepararon las hojas:\n\n• Equipos\n• Partidos\n• Config\n• Goleadores\n• Eliminatorias\n\n' +
     'Registra tus equipos y partidos y usa la Web App para visualizar la tabla.',
     SpreadsheetApp.getUi().ButtonSet.OK
   );
@@ -172,7 +230,47 @@ function cargarDatosEjemplo() {
   hojaPartidos.getRange(2, 1, partidos.length, 7).setValues(partidos);
   hojaPartidos.getRange(2, 2, partidos.length, 1).setNumberFormat('dd/MM/yyyy');
 
-  SpreadsheetApp.getUi().alert('✅ Datos de ejemplo cargados en Equipos y Partidos.');
+  const hojaGoleadores = ss.getSheetByName(SHEET_GOLEADORES);
+  if (hojaGoleadores) {
+    hojaGoleadores.getRange('A2:C200').clearContent();
+    const goleadores = [
+      ['Carlos Méndez',    'Leones FC',    5],
+      ['Luis Hernández',   'Leones FC',    3],
+      ['Diego Pérez',      'Tigres Rojos', 2],
+      ['Andrés López',     'Águilas',      4],
+      ['Pablo Ramírez',    'Halcones',     3],
+      ['José Castillo',    'Halcones',     2],
+      ['Mario García',     'Panteras',     4],
+      ['Javier Morales',   'Cóndores',     1],
+      ['Kevin Torres',     'Lobos',        3],
+      ['Daniel Cruz',      'Toros',        2],
+      ['María Gómez',      'Estrellas',    6],
+      ['Ana Ruiz',         'Estrellas',    3],
+      ['Sofía Álvarez',    'Cometas',      3],
+      ['Carolina Díaz',    'Gacelas',      4],
+      ['Valentina Rojas',  'Fénix',        3]
+    ];
+    hojaGoleadores.getRange(2, 1, goleadores.length, 3).setValues(goleadores);
+  }
+
+  const hojaElim = ss.getSheetByName(SHEET_ELIMINATORIAS);
+  if (hojaElim) {
+    hojaElim.getRange('A2:J200').clearContent();
+    const elim = [
+      ['Semifinal',    'Masculino', new Date(2026, 4, 3),  'Leones FC',  '', 'Toros',     '', '', '', 'Pendiente'],
+      ['Semifinal',    'Masculino', new Date(2026, 4, 3),  'Halcones',   '', 'Panteras',  '', '', '', 'Pendiente'],
+      ['Semifinal',    'Femenino',  new Date(2026, 4, 3),  'Estrellas',  '', 'Fénix',     '', '', '', 'Pendiente'],
+      ['Semifinal',    'Femenino',  new Date(2026, 4, 3),  'Gacelas',    '', 'Cometas',   '', '', '', 'Pendiente'],
+      ['Final',        'Masculino', new Date(2026, 4, 10), '',           '', '',          '', '', '', 'Pendiente'],
+      ['Tercer Lugar', 'Masculino', new Date(2026, 4, 10), '',           '', '',          '', '', '', 'Pendiente'],
+      ['Final',        'Femenino',  new Date(2026, 4, 10), '',           '', '',          '', '', '', 'Pendiente'],
+      ['Tercer Lugar', 'Femenino',  new Date(2026, 4, 10), '',           '', '',          '', '', '', 'Pendiente']
+    ];
+    hojaElim.getRange(2, 1, elim.length, 10).setValues(elim);
+    hojaElim.getRange(2, 3, elim.length, 1).setNumberFormat('dd/MM/yyyy');
+  }
+
+  SpreadsheetApp.getUi().alert('✅ Datos de ejemplo cargados en Equipos, Partidos, Goleadores y Eliminatorias.');
 }
 
 function abrirVistaPrevia() {
@@ -234,6 +332,8 @@ function getDatosCampeonato() {
   const equipos = leerEquipos(ss.getSheetByName(SHEET_EQUIPOS));
   const config = leerConfig(ss.getSheetByName(SHEET_CONFIG));
   const partidos = leerPartidos(ss.getSheetByName(SHEET_PARTIDOS), equipos);
+  const goleadores = leerGoleadores(ss.getSheetByName(SHEET_GOLEADORES), equipos);
+  const eliminatorias = leerEliminatorias(ss.getSheetByName(SHEET_ELIMINATORIAS), equipos);
   const tablas = calcularTablasPorGrupo(equipos, partidos);
   const grupos = ordenarGrupos(Object.keys(tablas), config.ordenGrupos);
   const jornadas = [...new Set(partidos.map(p => p.jornada))]
@@ -247,6 +347,8 @@ function getDatosCampeonato() {
     tablas,
     grupos,
     jornadas,
+    goleadores,
+    eliminatorias,
     actualizado: new Date().toISOString()
   };
 }
@@ -274,6 +376,77 @@ function leerEquipos(hoja) {
       grupo: String(r[3] || '').trim() || 'General',
       escudo: String(r[4] || '').trim()
     }));
+}
+
+function leerGoleadores(hoja, equipos) {
+  if (!hoja || hoja.getLastRow() < 2) return [];
+  const equipoInfo = {};
+  (equipos || []).forEach(e => {
+    equipoInfo[e.nombre] = { grupo: e.grupo, escudo: e.escudo };
+  });
+  const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 3).getValues();
+  return datos
+    .filter(r => r[0] && r[1])
+    .map(r => {
+      const equipo = String(r[1]).trim();
+      const info = equipoInfo[equipo] || {};
+      return {
+        jugador: String(r[0]).trim(),
+        equipo: equipo,
+        grupo: info.grupo || null,
+        escudo: info.escudo || '',
+        goles: Number(r[2]) || 0
+      };
+    })
+    .filter(r => r.goles > 0)
+    .sort((a, b) => b.goles - a.goles || a.jugador.localeCompare(b.jugador));
+}
+
+function leerEliminatorias(hoja, equipos) {
+  if (!hoja || hoja.getLastRow() < 2) return [];
+  const infoEquipo = {};
+  (equipos || []).forEach(e => {
+    infoEquipo[e.nombre] = { escudo: e.escudo, grado: e.grado, grupo: e.grupo };
+  });
+  const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 10).getValues();
+  return datos
+    .filter(r => r[0])
+    .map((r, i) => {
+      const g1 = r[4] === '' || r[4] === null ? null : Number(r[4]);
+      const g2 = r[6] === '' || r[6] === null ? null : Number(r[6]);
+      const p1 = r[7] === '' || r[7] === null ? null : Number(r[7]);
+      const p2 = r[8] === '' || r[8] === null ? null : Number(r[8]);
+      const estadoRaw = String(r[9] || '').trim();
+      const equipo1 = String(r[3] || '').trim();
+      const equipo2 = String(r[5] || '').trim();
+      const jugado = g1 !== null && g2 !== null && equipo1 && equipo2;
+      const estado = estadoRaw || (jugado ? 'Jugado' : 'Pendiente');
+      let ganador = null;
+      if (jugado && estado === 'Jugado') {
+        if (g1 > g2) ganador = equipo1;
+        else if (g2 > g1) ganador = equipo2;
+        else if (p1 !== null && p2 !== null) {
+          if (p1 > p2) ganador = equipo1;
+          else if (p2 > p1) ganador = equipo2;
+        }
+      }
+      return {
+        id: i + 1,
+        fase: String(r[0]).trim(),
+        rama: String(r[1] || '').trim() || 'General',
+        fecha: r[2] instanceof Date ? r[2].toISOString() : String(r[2] || ''),
+        equipo1: equipo1,
+        escudo1: (infoEquipo[equipo1] || {}).escudo || '',
+        goles1: g1,
+        equipo2: equipo2,
+        escudo2: (infoEquipo[equipo2] || {}).escudo || '',
+        goles2: g2,
+        penales1: p1,
+        penales2: p2,
+        estado: estado,
+        ganador: ganador
+      };
+    });
 }
 
 function leerPartidos(hoja, equipos) {

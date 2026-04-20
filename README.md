@@ -121,6 +121,9 @@ Tailwind) + Google Sites (portada que embebe la Web App).
 - Racha de forma (últimos 5 partidos)
 - Listado de partidos filtrable por jornada y por grupo
 - Detalle por equipo en modal (historial de partidos)
+- **Goleadores individuales** — ranking por jugador (top scorers)
+- **Fase eliminatoria** con bracket visual (Octavos → Cuartos → Semifinal
+  → Final + Tercer Lugar), con soporte para penales y rama masculina/femenina
 - Ranking de goles por equipo dentro del grupo
 - Resaltado de posiciones de clasificación
 - 100% responsivo (móvil, tablet, pantalla)
@@ -168,10 +171,31 @@ Se crean 3 hojas:
 - **Equipos** — `ID | Nombre | Grado/Sección | Grupo | Escudo (URL)`
 - **Partidos** — `Jornada | Fecha | Local | Goles L | Visitante | Goles V | Estado`
 - **Config** — nombre del campeonato, colores, logo, clasificados, orden de grupos
+- **Goleadores** — `Jugador | Equipo | Goles` (ranking de goleadores individuales)
+- **Eliminatorias** — `Fase | Rama | Fecha | Equipo 1 | Goles 1 | Equipo 2 | Goles 2 | Penales 1 | Penales 2 | Estado`
 
 La columna **Grupo** de Equipos admite cualquier texto; por defecto trae
 validación con `Grupo A`, `Grupo B`, `Femenino`. Los partidos se asignan al
 grupo automáticamente según el equipo local.
+
+### Goleadores
+
+En la hoja **Goleadores** se lleva una cuenta corrida por jugador. Cada vez
+que un jugador marque, actualiza el valor de su fila (o agrega una nueva).
+El campo **Equipo** debe coincidir con un nombre de la hoja **Equipos** —
+así el ranking se filtra automáticamente por grupo.
+
+### Fase eliminatoria (bracket)
+
+En la hoja **Eliminatorias** agrega una fila por llave:
+
+- `Fase` admite: `Octavos`, `Cuartos`, `Semifinal`, `Final`, `Tercer Lugar`
+- `Rama` sirve para separar brackets (ej. `Masculino`, `Femenino`)
+- Los equipos se ingresan como texto; si aún no se conoce uno, deja la celda
+  vacía y aparecerá como *Por definir*
+- Cuando haya empate, usa las columnas `Penales 1` y `Penales 2` para
+  resolver al ganador — la Web App lo detecta y marca al equipo ganador
+- El **Tercer Lugar** se muestra separado, debajo de la Final, con un ícono 🥉
 
 > Opcional: **⚽ Campeonato → 2. Cargar datos de ejemplo** llena las hojas
 > con 6 equipos y 4 jornadas de muestra para ver el resultado inmediato.
@@ -181,7 +205,10 @@ grupo automáticamente según el equipo local.
 1. Ingresa los partidos en la hoja **Partidos**.
 2. Asegúrate de que el **Estado** sea `Jugado` cuando haya resultado
    (si dejas goles en blanco, queda como `Pendiente`).
-3. Abre la Web App o pulsa **Actualizar** en la tabla — se recalcula sola.
+3. Actualiza la hoja **Goleadores** cuando un jugador marque.
+4. Al terminar la fase de grupos, llena la hoja **Eliminatorias** con
+   los clasificados y sus enfrentamientos.
+5. Abre la Web App o pulsa **Actualizar** en la tabla — se recalcula sola.
 
 ## Publicar la Web App
 
