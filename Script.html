@@ -104,12 +104,104 @@
     $('main').classList.remove('hidden');
     $('main').classList.add('fade-in');
 
+    renderProximos();
     renderTabla();
     renderPartidos();
     renderEquipos();
     renderGoleadores();
     renderGoleadoresJugadores();
     renderEliminatoria();
+  }
+
+  function renderProximos() {
+    const { partidos, eliminatorias, grupos } = state.data;
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    // Fase de grupos pendientes
+    const pendientesGrupos = (partidos || [])
+      .filter(p => p.estado === 'Pendiente' && p.local && p.visitante)
+      .map(p => ({
+        fecha: p.fecha,
+        etiqueta: 'Jornada ' + p.jornada,
+        grupo: p.grupo || '',
+        equipo1: p.local,
+        equipo2: p.visitante,
+        escudo1: (state.data.equipos.find(e => e.nombre === p.local) || {}).escudo || '',
+        escudo2: (state.data.equipos.find(e => e.nombre === p.visitante) || {}).escudo || ''
+      }));
+
+    // Eliminatorias pendientes (con al menos un equipo definido)
+    const pendientesElim = (eliminatorias || [])
+      .filter(p => p.estado !== 'Jugado' && (p.equipo1 || p.equipo2))
+      .map(p => ({
+        fecha: p.fecha,
+        etiqueta: p.fase,
+        grupo: p.rama || '',
+        equipo1: p.equipo1 || '¿?',
+        equipo2: p.equipo2 || '¿?',
+        escudo1: p.escudo1 || '',
+        escudo2: p.escudo2 || ''
+      }));
+
+    const todos = pendientesGrupos.concat(pendientesElim)
+      .filter(p => {
+        if (!p.fecha) return true;
+        const d = new Date(p.fecha);
+        return !isNaN(d);
+      })
+      .sort((a, b) => {
+        const da = a.fecha ? new Date(a.fecha).getTime() : Infinity;
+        const db = b.fecha ? new Date(b.fecha).getTime() : Infinity;
+        return da - db;
+      });
+
+    const wrap = $('proximosWrap');
+    const strip = $('proximosStrip');
+    const total = $('proximosTotal');
+    strip.innerHTML = '';
+
+    if (todos.length === 0) {
+      wrap.classList.add('hidden');
+      return;
+    }
+
+    wrap.classList.remove('hidden');
+    total.textContent = todos.length + (todos.length === 1 ? ' pendiente' : ' pendientes');
+
+    const mostrar = todos.slice(0, 8);
+    mostrar.forEach(p => {
+      const fechaTxt = p.fecha ? fmtFechaCorta(p.fecha) : 'Sin fecha';
+      const e1 = { nombre: p.equipo1, escudo: p.escudo1 };
+      const e2 = { nombre: p.equipo2, escudo: p.escudo2 };
+      const card = document.createElement('div');
+      card.className = 'proximo-card snap-start';
+      card.innerHTML = `
+        <div class="proximo-top">
+          <span class="proximo-tag">${escapeHtml(p.etiqueta)}</span>
+          <span class="proximo-fecha">${escapeHtml(fechaTxt)}</span>
+        </div>
+        <div class="proximo-teams">
+          <div class="proximo-team">
+            ${escudoHTML(e1)}
+            <span class="truncate">${escapeHtml(p.equipo1)}</span>
+          </div>
+          <span class="proximo-vs">vs</span>
+          <div class="proximo-team">
+            ${escudoHTML(e2)}
+            <span class="truncate">${escapeHtml(p.equipo2)}</span>
+          </div>
+        </div>
+        ${p.grupo ? `<div class="proximo-grupo">${escapeHtml(p.grupo)}</div>` : ''}
+      `;
+      strip.appendChild(card);
+    });
+  }
+
+  function fmtFechaCorta(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    return d.toLocaleDateString('es-GT', { day: '2-digit', month: 'short' });
   }
 
   function renderGrupoSelector() {
