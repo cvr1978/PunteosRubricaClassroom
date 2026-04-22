@@ -22,7 +22,10 @@
   };
   const escudoHTML = (equipo) => {
     if (equipo.escudo) {
-      return `<img src="${escapeHtml(equipo.escudo)}" class="escudo" alt="" onerror="this.outerHTML='${fallbackEscudo(equipo.nombre)}'"/>`;
+      const letra = (equipo.nombre || '?').trim().charAt(0).toUpperCase();
+      return '<img src="' + escapeHtml(equipo.escudo) +
+        '" class="escudo" alt="" data-letra="' + escapeHtml(letra) +
+        '" onerror="(function(img){var s=document.createElement(\'span\');s.className=\'escudo-fallback\';s.textContent=img.dataset.letra;img.replaceWith(s);})(this)">';
     }
     return fallbackEscudo(equipo.nombre);
   };
