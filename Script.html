@@ -169,7 +169,7 @@
     wrap.classList.remove('hidden');
     total.textContent = todos.length + (todos.length === 1 ? ' pendiente' : ' pendientes');
 
-    const mostrar = todos.slice(0, 8);
+    const mostrar = todos.slice(0, 3);
     mostrar.forEach(p => {
       const fechaTxt = p.fecha ? fmtFechaCorta(p.fecha) : 'Sin fecha';
       const e1 = { nombre: p.equipo1, escudo: p.escudo1 };
