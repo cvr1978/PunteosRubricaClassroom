@@ -382,7 +382,7 @@ function leerGoleadores(hoja, equipos) {
   if (!hoja || hoja.getLastRow() < 2) return [];
   const equipoInfo = {};
   (equipos || []).forEach(e => {
-    equipoInfo[e.nombre] = { grupo: e.grupo, escudo: e.escudo };
+    equipoInfo[e.nombre] = { grupo: e.grupo, escudo: e.escudo, grado: e.grado };
   });
   const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 3).getValues();
   return datos
@@ -394,6 +394,7 @@ function leerGoleadores(hoja, equipos) {
         jugador: String(r[0]).trim(),
         equipo: equipo,
         grupo: info.grupo || null,
+        grado: info.grado || '',
         escudo: info.escudo || '',
         goles: Number(r[2]) || 0
       };
@@ -437,9 +438,11 @@ function leerEliminatorias(hoja, equipos) {
         fecha: r[2] instanceof Date ? r[2].toISOString() : String(r[2] || ''),
         equipo1: equipo1,
         escudo1: (infoEquipo[equipo1] || {}).escudo || '',
+        grado1: (infoEquipo[equipo1] || {}).grado || '',
         goles1: g1,
         equipo2: equipo2,
         escudo2: (infoEquipo[equipo2] || {}).escudo || '',
+        grado2: (infoEquipo[equipo2] || {}).grado || '',
         goles2: g2,
         penales1: p1,
         penales2: p2,

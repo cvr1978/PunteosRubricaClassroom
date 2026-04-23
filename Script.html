@@ -121,18 +121,25 @@
     const hoy = new Date();
     hoy.setHours(0, 0, 0, 0);
 
+    const infoEq = (nombre) => {
+      if (!nombre) return { escudo: '', grado: '' };
+      return state.data.equipos.find(e => e.nombre === nombre) || { escudo: '', grado: '' };
+    };
+
     // Fase de grupos pendientes
     const pendientesGrupos = (partidos || [])
       .filter(p => p.estado === 'Pendiente' && p.local && p.visitante)
-      .map(p => ({
-        fecha: p.fecha,
-        etiqueta: 'Jornada ' + p.jornada,
-        grupo: p.grupo || '',
-        equipo1: p.local,
-        equipo2: p.visitante,
-        escudo1: (state.data.equipos.find(e => e.nombre === p.local) || {}).escudo || '',
-        escudo2: (state.data.equipos.find(e => e.nombre === p.visitante) || {}).escudo || ''
-      }));
+      .map(p => {
+        const l = infoEq(p.local);
+        const v = infoEq(p.visitante);
+        return {
+          fecha: p.fecha,
+          etiqueta: 'Jornada ' + p.jornada,
+          grupo: p.grupo || '',
+          equipo1: p.local, escudo1: l.escudo || '', grado1: l.grado || '',
+          equipo2: p.visitante, escudo2: v.escudo || '', grado2: v.grado || ''
+        };
+      });
 
     // Eliminatorias pendientes (con al menos un equipo definido)
     const pendientesElim = (eliminatorias || [])
@@ -144,7 +151,9 @@
         equipo1: p.equipo1 || '¿?',
         equipo2: p.equipo2 || '¿?',
         escudo1: p.escudo1 || '',
-        escudo2: p.escudo2 || ''
+        escudo2: p.escudo2 || '',
+        grado1: p.grado1 || '',
+        grado2: p.grado2 || ''
       }));
 
     const todos = pendientesGrupos.concat(pendientesElim)
@@ -187,12 +196,18 @@
         <div class="proximo-teams">
           <div class="proximo-team">
             ${escudoHTML(e1)}
-            <span class="truncate">${escapeHtml(p.equipo1)}</span>
+            <div class="proximo-team-info">
+              <div class="truncate">${escapeHtml(p.equipo1)}</div>
+              ${p.grado1 ? `<div class="proximo-grado truncate">${escapeHtml(p.grado1)}</div>` : ''}
+            </div>
           </div>
           <span class="proximo-vs">vs</span>
           <div class="proximo-team">
             ${escudoHTML(e2)}
-            <span class="truncate">${escapeHtml(p.equipo2)}</span>
+            <div class="proximo-team-info">
+              <div class="truncate">${escapeHtml(p.equipo2)}</div>
+              ${p.grado2 ? `<div class="proximo-grado truncate">${escapeHtml(p.grado2)}</div>` : ''}
+            </div>
           </div>
         </div>
         ${p.grupo ? `<div class="proximo-grupo">${escapeHtml(p.grupo)}</div>` : ''}
@@ -533,7 +548,10 @@
         <div class="flex items-center gap-3 mb-1">
           <span class="badge-pos ${i === 0 ? 'p1' : i === 1 ? 'p2' : i === 2 ? 'p3' : ''}">${i + 1}</span>
           ${escudoHTML(t)}
-          <div class="flex-1 min-w-0 font-semibold truncate">${escapeHtml(t.equipo)}</div>
+          <div class="flex-1 min-w-0">
+            <div class="font-semibold truncate">${escapeHtml(t.equipo)}</div>
+            ${t.grado ? `<div class="text-xs text-slate-500 truncate">${escapeHtml(t.grado)}</div>` : ''}
+          </div>
           <div class="font-extrabold text-emerald-600 text-lg tabular-nums">${t.gf}</div>
         </div>
         <div class="bar-outer ml-11"><div class="bar-inner" style="width:${pct}%"></div></div>
@@ -573,7 +591,9 @@
           ${escudoHTML(equipoObj)}
           <div class="flex-1 min-w-0">
             <div class="font-semibold text-slate-900 truncate">${escapeHtml(g.jugador)}</div>
-            <div class="text-xs text-slate-500 truncate">${escapeHtml(g.equipo)}${g.grupo ? ' · ' + escapeHtml(g.grupo) : ''}</div>
+            <div class="text-xs text-slate-500 truncate">
+              ${escapeHtml(g.equipo)}${g.grado ? ' · ' + escapeHtml(g.grado) : ''}${g.grupo ? ' · ' + escapeHtml(g.grupo) : ''}
+            </div>
           </div>
           <div class="text-right shrink-0">
             <div class="font-extrabold text-amber-600 text-xl tabular-nums leading-none">${g.goles}</div>
@@ -670,7 +690,7 @@
     const hayPenales = p.penales1 !== null && p.penales2 !== null;
     const ganador1 = p.ganador && p.ganador === p.equipo1;
     const ganador2 = p.ganador && p.ganador === p.equipo2;
-    const fila = (nombre, escudo, goles, penales, esGanador) => {
+    const fila = (nombre, escudo, grado, goles, penales, esGanador) => {
       if (!nombre) {
         return `<div class="bk-team empty">
           <span class="escudo-fallback" style="background:#cbd5e1">?</span>
@@ -680,7 +700,10 @@
       }
       return `<div class="bk-team ${esGanador ? 'winner' : jugado && !esGanador ? 'loser' : ''}">
         ${escudoHTML({ nombre, escudo })}
-        <span class="truncate flex-1">${escapeHtml(nombre)}</span>
+        <div class="min-w-0 flex-1">
+          <div class="truncate">${escapeHtml(nombre)}</div>
+          ${grado ? `<div class="bk-grado truncate">${escapeHtml(grado)}</div>` : ''}
+        </div>
         ${penales !== null && penales !== undefined
           ? `<span class="text-[10px] text-slate-500">(${penales})</span>` : ''}
         <span class="bk-score">${jugado ? goles : '—'}</span>
@@ -697,8 +720,8 @@
           <span>${fecha}</span>
           ${badgeEstado}
         </div>
-        ${fila(p.equipo1, p.escudo1, p.goles1, p.penales1, ganador1)}
-        ${fila(p.equipo2, p.escudo2, p.goles2, p.penales2, ganador2)}
+        ${fila(p.equipo1, p.escudo1, p.grado1, p.goles1, p.penales1, ganador1)}
+        ${fila(p.equipo2, p.escudo2, p.grado2, p.goles2, p.penales2, ganador2)}
       </div>
     `;
   }
