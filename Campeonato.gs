@@ -25,6 +25,7 @@ function onOpenCampeonato() {
     .addItem('1. Crear hojas base', 'crearHojasCampeonato')
     .addItem('2. Cargar datos de ejemplo', 'cargarDatosEjemplo')
     .addSeparator()
+    .addItem('Refrescar dropdown de equipos', 'aplicarValidacionEquipos')
     .addItem('Abrir vista previa', 'abrirVistaPrevia')
     .addItem('Instrucciones para publicar', 'mostrarInstruccionesPublicar')
     .addToUi();
@@ -161,12 +162,45 @@ function crearHojasCampeonato() {
     hojaElim.getRange('J2:J1000').setDataValidation(reglaEstado);
   }
 
+  aplicarValidacionEquipos();
+
   SpreadsheetApp.getUi().alert(
     '✅ Hojas creadas/verificadas',
     'Se prepararon las hojas:\n\n• Equipos\n• Partidos\n• Config\n• Goleadores\n• Eliminatorias\n\n' +
     'Registra tus equipos y partidos y usa la Web App para visualizar la tabla.',
     SpreadsheetApp.getUi().ButtonSet.OK
   );
+}
+
+// Aplica validación de datos (dropdown) con la lista de equipos en
+// las columnas relevantes de Partidos, Goleadores y Eliminatorias.
+function aplicarValidacionEquipos() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const hojaEquipos = ss.getSheetByName(SHEET_EQUIPOS);
+  if (!hojaEquipos) return;
+
+  const rangoEquipos = hojaEquipos.getRange('B2:B1000');
+  const regla = SpreadsheetApp.newDataValidation()
+    .requireValueInRange(rangoEquipos, true)
+    .setAllowInvalid(true)
+    .build();
+
+  const hojaPartidos = ss.getSheetByName(SHEET_PARTIDOS);
+  if (hojaPartidos) {
+    hojaPartidos.getRange('C2:C1000').setDataValidation(regla);
+    hojaPartidos.getRange('E2:E1000').setDataValidation(regla);
+  }
+
+  const hojaGoleadores = ss.getSheetByName(SHEET_GOLEADORES);
+  if (hojaGoleadores) {
+    hojaGoleadores.getRange('B2:B1000').setDataValidation(regla);
+  }
+
+  const hojaElim = ss.getSheetByName(SHEET_ELIMINATORIAS);
+  if (hojaElim) {
+    hojaElim.getRange('D2:D1000').setDataValidation(regla);
+    hojaElim.getRange('F2:F1000').setDataValidation(regla);
+  }
 }
 
 function cargarDatosEjemplo() {
@@ -382,17 +416,20 @@ function leerGoleadores(hoja, equipos) {
   if (!hoja || hoja.getLastRow() < 2) return [];
   const equipoInfo = {};
   (equipos || []).forEach(e => {
-    equipoInfo[e.nombre] = { grupo: e.grupo, escudo: e.escudo, grado: e.grado };
+    const key = String(e.nombre).trim().toLowerCase();
+    if (key) equipoInfo[key] = {
+      nombre: e.nombre, grupo: e.grupo, escudo: e.escudo, grado: e.grado
+    };
   });
   const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 3).getValues();
   return datos
     .filter(r => r[0] && r[1])
     .map(r => {
-      const equipo = String(r[1]).trim();
-      const info = equipoInfo[equipo] || {};
+      const equipoRaw = String(r[1]).trim();
+      const info = equipoInfo[equipoRaw.toLowerCase()] || {};
       return {
         jugador: String(r[0]).trim(),
-        equipo: equipo,
+        equipo: info.nombre || equipoRaw,
         grupo: info.grupo || null,
         grado: info.grado || '',
         escudo: info.escudo || '',
@@ -407,8 +444,16 @@ function leerEliminatorias(hoja, equipos) {
   if (!hoja || hoja.getLastRow() < 2) return [];
   const infoEquipo = {};
   (equipos || []).forEach(e => {
-    infoEquipo[e.nombre] = { escudo: e.escudo, grado: e.grado, grupo: e.grupo };
+    const key = String(e.nombre).trim().toLowerCase();
+    if (key) infoEquipo[key] = {
+      nombre: e.nombre, escudo: e.escudo, grado: e.grado, grupo: e.grupo
+    };
   });
+  const normalizar = (s) => {
+    const raw = String(s || '').trim();
+    const found = infoEquipo[raw.toLowerCase()];
+    return found ? found.nombre : raw;
+  };
   const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 10).getValues();
   return datos
     .filter(r => r[0])
@@ -418,8 +463,10 @@ function leerEliminatorias(hoja, equipos) {
       const p1 = r[7] === '' || r[7] === null ? null : Number(r[7]);
       const p2 = r[8] === '' || r[8] === null ? null : Number(r[8]);
       const estadoRaw = String(r[9] || '').trim();
-      const equipo1 = String(r[3] || '').trim();
-      const equipo2 = String(r[5] || '').trim();
+      const equipo1 = normalizar(r[3]);
+      const equipo2 = normalizar(r[5]);
+      const info1 = infoEquipo[equipo1.toLowerCase()] || {};
+      const info2 = infoEquipo[equipo2.toLowerCase()] || {};
       const jugado = g1 !== null && g2 !== null && equipo1 && equipo2;
       const estado = estadoRaw || (jugado ? 'Jugado' : 'Pendiente');
       let ganador = null;
@@ -437,12 +484,12 @@ function leerEliminatorias(hoja, equipos) {
         rama: String(r[1] || '').trim() || 'General',
         fecha: r[2] instanceof Date ? r[2].toISOString() : String(r[2] || ''),
         equipo1: equipo1,
-        escudo1: (infoEquipo[equipo1] || {}).escudo || '',
-        grado1: (infoEquipo[equipo1] || {}).grado || '',
+        escudo1: info1.escudo || '',
+        grado1: info1.grado || '',
         goles1: g1,
         equipo2: equipo2,
-        escudo2: (infoEquipo[equipo2] || {}).escudo || '',
-        grado2: (infoEquipo[equipo2] || {}).grado || '',
+        escudo2: info2.escudo || '',
+        grado2: info2.grado || '',
         goles2: g2,
         penales1: p1,
         penales2: p2,
@@ -454,8 +501,16 @@ function leerEliminatorias(hoja, equipos) {
 
 function leerPartidos(hoja, equipos) {
   if (!hoja || hoja.getLastRow() < 2) return [];
-  const grupoDe = {};
-  (equipos || []).forEach(e => { grupoDe[e.nombre] = e.grupo; });
+  const lookup = {};
+  (equipos || []).forEach(e => {
+    const key = String(e.nombre).trim().toLowerCase();
+    if (key) lookup[key] = { nombre: e.nombre, grupo: e.grupo };
+  });
+  const normalizar = (s) => {
+    const raw = String(s || '').trim();
+    const found = lookup[raw.toLowerCase()];
+    return found ? found.nombre : raw;
+  };
   const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 7).getValues();
   return datos
     .filter(r => r[2] && r[4])
@@ -464,10 +519,10 @@ function leerPartidos(hoja, equipos) {
       const gv = r[5] === '' || r[5] === null ? null : Number(r[5]);
       const estadoRaw = String(r[6] || '').trim();
       const estado = estadoRaw || (gl !== null && gv !== null ? 'Jugado' : 'Pendiente');
-      const local = String(r[2]).trim();
-      const visitante = String(r[4]).trim();
-      const grupoL = grupoDe[local] || null;
-      const grupoV = grupoDe[visitante] || null;
+      const local = normalizar(r[2]);
+      const visitante = normalizar(r[4]);
+      const grupoL = (lookup[local.toLowerCase()] || {}).grupo || null;
+      const grupoV = (lookup[visitante.toLowerCase()] || {}).grupo || null;
       return {
         id: i + 1,
         jornada: Number(r[0]) || 0,
