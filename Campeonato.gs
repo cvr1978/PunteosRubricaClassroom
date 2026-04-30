@@ -422,20 +422,32 @@ function leerGoleadores(hoja, equipos) {
     };
   });
   const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 3).getValues();
-  return datos
+
+  // Acumular goles por jugador+equipo (insensible a mayúsculas/espacios)
+  const acumulado = {};
+  datos
     .filter(r => r[0] && r[1])
-    .map(r => {
+    .forEach(r => {
       const equipoRaw = String(r[1]).trim();
       const info = equipoInfo[equipoRaw.toLowerCase()] || {};
-      return {
-        jugador: String(r[0]).trim(),
-        equipo: info.nombre || equipoRaw,
-        grupo: info.grupo || null,
-        grado: info.grado || '',
-        escudo: info.escudo || '',
-        goles: Number(r[2]) || 0
-      };
-    })
+      const jugador = String(r[0]).trim();
+      const equipoCanonico = info.nombre || equipoRaw;
+      const key = jugador.toLowerCase() + '||' + equipoCanonico.toLowerCase();
+      const goles = Number(r[2]) || 0;
+      if (!acumulado[key]) {
+        acumulado[key] = {
+          jugador: jugador,
+          equipo: equipoCanonico,
+          grupo: info.grupo || null,
+          grado: info.grado || '',
+          escudo: info.escudo || '',
+          goles: 0
+        };
+      }
+      acumulado[key].goles += goles;
+    });
+
+  return Object.values(acumulado)
     .filter(r => r.goles > 0)
     .sort((a, b) => b.goles - a.goles || a.jugador.localeCompare(b.jugador));
 }
