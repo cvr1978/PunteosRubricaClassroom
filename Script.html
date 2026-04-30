@@ -1,0 +1,862 @@
+<script>
+(function () {
+  'use strict';
+
+  const state = {
+    data: null,
+    grupoActivo: null,
+    jornadaActiva: 'todas',
+    orden: { campo: 'pts', dir: 'desc' },
+    filtroEquipo: ''
+  };
+
+  // ============================================================
+  // UTIL
+  // ============================================================
+  const $ = (id) => document.getElementById(id);
+  const fmtFecha = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    return d.toLocaleDateString('es-GT', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+  const escudoHTML = (equipo) => {
+    if (equipo.escudo) {
+      const letra = (equipo.nombre || '?').trim().charAt(0).toUpperCase();
+      return '<img src="' + escapeHtml(equipo.escudo) +
+        '" class="escudo" alt="" data-letra="' + escapeHtml(letra) +
+        '" onerror="(function(img){var s=document.createElement(\'span\');s.className=\'escudo-fallback\';s.textContent=img.dataset.letra;img.replaceWith(s);})(this)">';
+    }
+    return fallbackEscudo(equipo.nombre);
+  };
+  const fallbackEscudo = (nombre) => {
+    const letra = (nombre || '?').trim().charAt(0).toUpperCase();
+    return `<span class="escudo-fallback">${letra}</span>`;
+  };
+  const escapeHtml = (s) => String(s || '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[c]);
+
+  // ============================================================
+  // LOAD
+  // ============================================================
+  function cargar(forzar) {
+    if (forzar) $('refreshIcon').classList.add('refreshing');
+    google.script.run
+      .withSuccessHandler((res) => {
+        $('refreshIcon').classList.remove('refreshing');
+        state.data = res;
+        render();
+      })
+      .withFailureHandler((err) => {
+        $('refreshIcon').classList.remove('refreshing');
+        $('loader').classList.add('hidden');
+        $('errorBox').classList.remove('hidden');
+        $('errorMsg').textContent = (err && err.message) || 'Error desconocido';
+      })
+      .getDatosCampeonato();
+  }
+
+  // ============================================================
+  // RENDER PRINCIPAL
+  // ============================================================
+  function render() {
+    const { config, equipos, partidos, grupos, jornadas } = state.data;
+
+    // Config visual
+    $('titulo').textContent = config.nombre;
+    $('subtitulo').textContent = config.subtitulo || '';
+    if (config.logo) {
+      $('logoImg').src = config.logo;
+      $('logoImg').classList.remove('hidden');
+      $('logoEmoji').classList.add('hidden');
+    }
+    if (config.colorPrimario && config.colorSecundario) {
+      $('headerBg').style.background =
+        `linear-gradient(135deg, ${config.colorPrimario}, ${config.colorSecundario})`;
+    }
+
+    // Grupo activo (inicial o validado)
+    if (!state.grupoActivo || grupos.indexOf(state.grupoActivo) === -1) {
+      state.grupoActivo = grupos[0] || null;
+    }
+    renderGrupoSelector();
+
+    // Stats globales
+    $('statEquipos').textContent = equipos.length;
+    $('statJornadas').textContent = jornadas.length;
+    const jugados = partidos.filter(p => p.estado === 'Jugado');
+    $('statPartidos').textContent = jugados.length + ' / ' + partidos.length;
+    const goles = jugados.reduce((s, p) => s + (p.golesLocal || 0) + (p.golesVisitante || 0), 0);
+    $('statGoles').textContent = goles;
+
+    // Etiqueta de grupos en el chip de equipos si hay más de uno
+    if (grupos.length > 1) {
+      const txt = grupos.length + ' grupos';
+      const chip = $('statEquipos');
+      chip.innerHTML = equipos.length + ' <span class="text-[10px] text-white/70 font-semibold align-middle">· ' + grupos.length + ' grupos</span>';
+    }
+
+    // Fecha de actualización
+    const fecha = new Date(state.data.actualizado);
+    $('footerUpdate').textContent = 'Actualizado ' + fecha.toLocaleString('es-GT');
+
+    // Mostrar UI
+    $('loader').classList.add('hidden');
+    $('errorBox').classList.add('hidden');
+    $('main').classList.remove('hidden');
+    $('main').classList.add('fade-in');
+
+    renderProximos();
+    renderTabla();
+    renderPartidos();
+    renderEquipos();
+    renderGoleadores();
+    renderGoleadoresJugadores();
+    renderEliminatoria();
+  }
+
+  function renderProximos() {
+    const { partidos, eliminatorias, grupos } = state.data;
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    const infoEq = (nombre) => {
+      if (!nombre) return { escudo: '', grado: '' };
+      return state.data.equipos.find(e => e.nombre === nombre) || { escudo: '', grado: '' };
+    };
+
+    // Fase de grupos pendientes
+    const pendientesGrupos = (partidos || [])
+      .filter(p => p.estado === 'Pendiente' && p.local && p.visitante)
+      .map(p => {
+        const l = infoEq(p.local);
+        const v = infoEq(p.visitante);
+        return {
+          fecha: p.fecha,
+          etiqueta: 'Jornada ' + p.jornada,
+          grupo: p.grupo || '',
+          equipo1: p.local, escudo1: l.escudo || '', grado1: l.grado || '',
+          equipo2: p.visitante, escudo2: v.escudo || '', grado2: v.grado || ''
+        };
+      });
+
+    // Eliminatorias pendientes (con al menos un equipo definido)
+    const pendientesElim = (eliminatorias || [])
+      .filter(p => p.estado !== 'Jugado' && (p.equipo1 || p.equipo2))
+      .map(p => ({
+        fecha: p.fecha,
+        etiqueta: p.fase,
+        grupo: p.rama || '',
+        equipo1: p.equipo1 || '¿?',
+        equipo2: p.equipo2 || '¿?',
+        escudo1: p.escudo1 || '',
+        escudo2: p.escudo2 || '',
+        grado1: p.grado1 || '',
+        grado2: p.grado2 || ''
+      }));
+
+    const todos = pendientesGrupos.concat(pendientesElim)
+      .filter(p => {
+        if (!p.fecha) return true;
+        const d = new Date(p.fecha);
+        return !isNaN(d);
+      })
+      .sort((a, b) => {
+        const da = a.fecha ? new Date(a.fecha).getTime() : Infinity;
+        const db = b.fecha ? new Date(b.fecha).getTime() : Infinity;
+        return da - db;
+      });
+
+    const wrap = $('proximosWrap');
+    const strip = $('proximosStrip');
+    const total = $('proximosTotal');
+    strip.innerHTML = '';
+
+    if (todos.length === 0) {
+      wrap.classList.add('hidden');
+      return;
+    }
+
+    wrap.classList.remove('hidden');
+    total.textContent = todos.length + (todos.length === 1 ? ' pendiente' : ' pendientes');
+
+    const mostrar = todos.slice(0, 3);
+    mostrar.forEach(p => {
+      const fechaTxt = p.fecha ? fmtFechaCorta(p.fecha) : 'Sin fecha';
+      const e1 = { nombre: p.equipo1, escudo: p.escudo1 };
+      const e2 = { nombre: p.equipo2, escudo: p.escudo2 };
+      const card = document.createElement('div');
+      card.className = 'proximo-card';
+      card.innerHTML = `
+        <div class="proximo-top">
+          <span class="proximo-tag">${escapeHtml(p.etiqueta)}</span>
+          <span class="proximo-fecha">${escapeHtml(fechaTxt)}</span>
+        </div>
+        <div class="proximo-teams">
+          <div class="proximo-team">
+            ${escudoHTML(e1)}
+            <div class="proximo-team-info">
+              <div class="truncate">${escapeHtml(p.equipo1)}</div>
+              ${p.grado1 ? `<div class="proximo-grado truncate">${escapeHtml(p.grado1)}</div>` : ''}
+            </div>
+          </div>
+          <span class="proximo-vs">vs</span>
+          <div class="proximo-team">
+            ${escudoHTML(e2)}
+            <div class="proximo-team-info">
+              <div class="truncate">${escapeHtml(p.equipo2)}</div>
+              ${p.grado2 ? `<div class="proximo-grado truncate">${escapeHtml(p.grado2)}</div>` : ''}
+            </div>
+          </div>
+        </div>
+        ${p.grupo ? `<div class="proximo-grupo">${escapeHtml(p.grupo)}</div>` : ''}
+      `;
+      strip.appendChild(card);
+    });
+  }
+
+  function fmtFechaCorta(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    return d.toLocaleDateString('es-GT', { day: '2-digit', month: 'short' });
+  }
+
+  function renderGrupoSelector() {
+    const { grupos } = state.data;
+    const wrap = $('grupoSelectorWrap');
+    const cont = $('grupoSelector');
+    cont.innerHTML = '';
+    if (!grupos || grupos.length <= 1) {
+      wrap.classList.add('hidden');
+      return;
+    }
+    wrap.classList.remove('hidden');
+    grupos.forEach(g => {
+      const btn = document.createElement('button');
+      btn.className = 'chip-grupo' + (g === state.grupoActivo ? ' active' : '');
+      btn.textContent = g;
+      btn.addEventListener('click', () => {
+        state.grupoActivo = g;
+        renderGrupoSelector();
+        renderTabla();
+        renderPartidos();
+        renderEquipos();
+        renderGoleadores();
+        renderGoleadoresJugadores();
+        renderEliminatoria();
+      });
+      cont.appendChild(btn);
+    });
+  }
+
+  function getTablaActual() {
+    if (!state.data) return [];
+    if (!state.grupoActivo) return [];
+    return state.data.tablas[state.grupoActivo] || [];
+  }
+
+  function getPartidosActuales() {
+    if (!state.data) return [];
+    const todos = state.data.partidos;
+    if (!state.grupoActivo || state.data.grupos.length <= 1) return todos;
+    return todos.filter(p => p.grupo === state.grupoActivo);
+  }
+
+  // ============================================================
+  // TABLA DE POSICIONES
+  // ============================================================
+  function renderTabla() {
+    const { config } = state.data;
+    const tabla = getTablaActual();
+    const clasifican = config.clasifican || 0;
+
+    const filtro = state.filtroEquipo.toLowerCase().trim();
+    const ordenado = tabla.slice();
+    if (state.orden.campo !== 'pts' || state.orden.dir !== 'desc') {
+      const k = state.orden.campo;
+      ordenado.sort((a, b) => {
+        const diff = (b[k] - a[k]);
+        return state.orden.dir === 'desc' ? diff : -diff;
+      });
+    }
+    const filtrado = ordenado.filter(e => !filtro || e.equipo.toLowerCase().includes(filtro));
+
+    // Desktop
+    const tbody = $('tablaBody');
+    tbody.innerHTML = '';
+    filtrado.forEach((t, idx) => {
+      const posReal = ordenado.indexOf(t) + 1;
+      const clasifica = posReal <= clasifican && t.pj > 0;
+      const tr = document.createElement('tr');
+      tr.className = 'fila-equipo' + (clasifica ? ' fila-clasifica' : '');
+      tr.innerHTML = `
+        <td class="px-3 py-3">
+          <span class="badge-pos ${posReal === 1 ? 'p1' : posReal === 2 ? 'p2' : posReal === 3 ? 'p3' : ''}">${posReal}</span>
+        </td>
+        <td class="px-3 py-3">
+          <div class="flex items-center gap-3">
+            ${escudoHTML(t)}
+            <div>
+              <div class="font-semibold text-slate-900">${escapeHtml(t.equipo)}</div>
+              ${t.grado ? `<div class="text-xs text-slate-500">${escapeHtml(t.grado)}</div>` : ''}
+            </div>
+          </div>
+        </td>
+        <td class="px-2 py-3 text-center">${t.pj}</td>
+        <td class="px-2 py-3 text-center text-emerald-600 font-semibold">${t.pg}</td>
+        <td class="px-2 py-3 text-center text-slate-500">${t.pe}</td>
+        <td class="px-2 py-3 text-center text-red-500">${t.pp}</td>
+        <td class="px-2 py-3 text-center">${t.gf}</td>
+        <td class="px-2 py-3 text-center">${t.gc}</td>
+        <td class="px-2 py-3 text-center font-semibold ${t.dg > 0 ? 'text-emerald-600' : t.dg < 0 ? 'text-red-500' : 'text-slate-500'}">${t.dg > 0 ? '+' : ''}${t.dg}</td>
+        <td class="px-3 py-3 text-center">
+          <span class="inline-block px-3 py-1 rounded-lg bg-blue-50 text-blue-700 font-extrabold text-base">${t.pts}</span>
+        </td>
+        <td class="px-3 py-3">
+          <div class="flex items-center justify-center gap-1">${renderForma(t.forma)}</div>
+        </td>
+      `;
+      tr.addEventListener('click', () => abrirDetalleEquipo(t.equipo));
+      tbody.appendChild(tr);
+    });
+
+    if (filtrado.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="11" class="py-10 text-center text-slate-400">Sin equipos que coincidan.</td></tr>`;
+    }
+
+    // Mobile cards
+    const cards = $('tablaCards');
+    cards.innerHTML = '';
+    filtrado.forEach((t) => {
+      const posReal = ordenado.indexOf(t) + 1;
+      const clasifica = posReal <= clasifican && t.pj > 0;
+      const card = document.createElement('div');
+      card.className = 'p-3 active:bg-slate-50 cursor-pointer' + (clasifica ? ' border-l-4 border-emerald-500 bg-emerald-50/30' : '');
+      card.innerHTML = `
+        <div class="flex items-center gap-3">
+          <span class="badge-pos ${posReal === 1 ? 'p1' : posReal === 2 ? 'p2' : posReal === 3 ? 'p3' : ''}">${posReal}</span>
+          ${escudoHTML(t)}
+          <div class="flex-1 min-w-0">
+            <div class="font-semibold text-slate-900 truncate">${escapeHtml(t.equipo)}</div>
+            <div class="text-xs text-slate-500">PJ ${t.pj} · ${t.pg}G ${t.pe}E ${t.pp}P · DG ${t.dg > 0 ? '+' : ''}${t.dg}</div>
+          </div>
+          <div class="text-right">
+            <div class="text-lg font-extrabold text-blue-700">${t.pts}</div>
+            <div class="text-[10px] text-slate-400 uppercase tracking-wider">pts</div>
+          </div>
+        </div>
+        <div class="flex items-center justify-between mt-2">
+          <div class="flex gap-1">${renderForma(t.forma)}</div>
+          <span class="text-[11px] text-slate-400">${escapeHtml(t.grado || '')}</span>
+        </div>
+      `;
+      card.addEventListener('click', () => abrirDetalleEquipo(t.equipo));
+      cards.appendChild(card);
+    });
+
+    // Actualizar indicadores de orden
+    document.querySelectorAll('.sortable').forEach(th => {
+      th.classList.remove('asc', 'desc');
+      if (th.dataset.sort === state.orden.campo) {
+        th.classList.add(state.orden.dir);
+      }
+    });
+  }
+
+  function renderForma(forma) {
+    if (!forma || forma.length === 0) {
+      return '<span class="text-xs text-slate-300">—</span>';
+    }
+    return forma.map(r => {
+      const cls = r === 'G' ? 'dot-g' : r === 'E' ? 'dot-e' : 'dot-p';
+      const tit = r === 'G' ? 'Ganó' : r === 'E' ? 'Empató' : 'Perdió';
+      return `<span class="${cls}" title="${tit}"></span>`;
+    }).join('');
+  }
+
+  // ============================================================
+  // PARTIDOS
+  // ============================================================
+  function renderPartidos() {
+    const partidos = getPartidosActuales();
+    const jornadas = [...new Set(partidos.map(p => p.jornada))]
+      .filter(j => j > 0)
+      .sort((a, b) => a - b);
+
+    // Chips de filtro de jornada
+    const cont = $('filtroJornadas');
+    cont.innerHTML = '';
+    const chipTodos = document.createElement('button');
+    chipTodos.className = 'chip-jornada' + (state.jornadaActiva === 'todas' ? ' active' : '');
+    chipTodos.textContent = 'Todas';
+    chipTodos.addEventListener('click', () => { state.jornadaActiva = 'todas'; renderPartidos(); });
+    cont.appendChild(chipTodos);
+    jornadas.forEach(j => {
+      const chip = document.createElement('button');
+      chip.className = 'chip-jornada' + (state.jornadaActiva === j ? ' active' : '');
+      chip.textContent = 'Jornada ' + j;
+      chip.addEventListener('click', () => { state.jornadaActiva = j; renderPartidos(); });
+      cont.appendChild(chip);
+    });
+
+    // Listado agrupado por jornada
+    const lista = $('listaPartidos');
+    lista.innerHTML = '';
+    const filtrados = state.jornadaActiva === 'todas'
+      ? partidos
+      : partidos.filter(p => p.jornada === state.jornadaActiva);
+
+    if (filtrados.length === 0) {
+      lista.innerHTML = '<div class="text-center text-slate-400 py-10">No hay partidos.</div>';
+      return;
+    }
+
+    const grupos = {};
+    filtrados.forEach(p => {
+      if (!grupos[p.jornada]) grupos[p.jornada] = [];
+      grupos[p.jornada].push(p);
+    });
+
+    Object.keys(grupos)
+      .sort((a, b) => Number(a) - Number(b))
+      .forEach(j => {
+        const bloque = document.createElement('div');
+        bloque.className = 'bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden fade-in';
+        const partidosHTML = grupos[j].map(p => cardPartido(p)).join('');
+        bloque.innerHTML = `
+          <div class="px-4 py-3 bg-gradient-to-r from-blue-700 to-emerald-600 text-white font-bold text-sm flex items-center justify-between">
+            <span>Jornada ${j}</span>
+            <span class="text-xs opacity-90">${grupos[j].length} partido${grupos[j].length !== 1 ? 's' : ''}</span>
+          </div>
+          <div class="divide-y divide-slate-100">${partidosHTML}</div>
+        `;
+        lista.appendChild(bloque);
+      });
+  }
+
+  function cardPartido(p) {
+    const { equipos } = state.data;
+    const eqL = equipos.find(e => e.nombre === p.local) || { nombre: p.local };
+    const eqV = equipos.find(e => e.nombre === p.visitante) || { nombre: p.visitante };
+    const jugado = p.estado === 'Jugado' && p.golesLocal !== null && p.golesVisitante !== null;
+    const ganadorLocal = jugado && p.golesLocal > p.golesVisitante;
+    const ganadorVisita = jugado && p.golesVisitante > p.golesLocal;
+
+    return `
+      <div class="px-3 sm:px-5 py-3 sm:py-4 hover:bg-slate-50 transition">
+        <div class="flex items-center gap-2 sm:gap-4">
+          <div class="flex-1 flex items-center justify-end gap-2 sm:gap-3 min-w-0">
+            <div class="text-right min-w-0">
+              <div class="font-semibold text-sm sm:text-base truncate ${ganadorLocal ? 'text-slate-900' : 'text-slate-600'}">${escapeHtml(eqL.nombre)}</div>
+              ${eqL.grado ? `<div class="text-[10px] sm:text-xs text-slate-400">${escapeHtml(eqL.grado)}</div>` : ''}
+            </div>
+            ${escudoHTML(eqL)}
+          </div>
+          <div class="shrink-0 text-center">
+            ${jugado ? `
+              <div class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-900 text-white font-bold text-base sm:text-lg tabular-nums">
+                <span class="${ganadorLocal ? 'text-emerald-400' : ''}">${p.golesLocal}</span>
+                <span class="text-slate-500">-</span>
+                <span class="${ganadorVisita ? 'text-emerald-400' : ''}">${p.golesVisitante}</span>
+              </div>
+              <div class="text-[10px] text-slate-400 mt-1">${fmtFecha(p.fecha)}</div>
+            ` : `
+              <div class="inline-flex items-center px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 font-semibold text-xs border border-amber-200">
+                ${p.estado || 'Pendiente'}
+              </div>
+              <div class="text-[10px] text-slate-400 mt-1">${fmtFecha(p.fecha)}</div>
+            `}
+          </div>
+          <div class="flex-1 flex items-center gap-2 sm:gap-3 min-w-0">
+            ${escudoHTML(eqV)}
+            <div class="min-w-0">
+              <div class="font-semibold text-sm sm:text-base truncate ${ganadorVisita ? 'text-slate-900' : 'text-slate-600'}">${escapeHtml(eqV.nombre)}</div>
+              ${eqV.grado ? `<div class="text-[10px] sm:text-xs text-slate-400">${escapeHtml(eqV.grado)}</div>` : ''}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ============================================================
+  // EQUIPOS (cards)
+  // ============================================================
+  function renderEquipos() {
+    const tabla = getTablaActual();
+    const grid = $('gridEquipos');
+    grid.innerHTML = '';
+    if (tabla.length === 0) {
+      grid.innerHTML = '<div class="col-span-full text-center text-slate-400 py-10">No hay equipos registrados.</div>';
+      return;
+    }
+    tabla.forEach(t => {
+      const card = document.createElement('button');
+      card.className = 'text-left bg-white rounded-2xl shadow-sm border border-slate-200 p-5 hover:shadow-md hover:-translate-y-0.5 transition fade-in';
+      const efectividad = t.pj > 0 ? Math.round((t.pts / (t.pj * 3)) * 100) : 0;
+      card.innerHTML = `
+        <div class="flex items-center gap-3 mb-4">
+          ${escudoHTML(t)}
+          <div class="min-w-0">
+            <div class="font-bold text-slate-900 truncate">${escapeHtml(t.equipo)}</div>
+            ${t.grado ? `<div class="text-xs text-slate-500">${escapeHtml(t.grado)}</div>` : ''}
+          </div>
+          <div class="ml-auto text-right">
+            <div class="text-2xl font-extrabold text-blue-700">${t.pts}</div>
+            <div class="text-[10px] uppercase tracking-wider text-slate-400">PTS</div>
+          </div>
+        </div>
+        <div class="grid grid-cols-4 gap-2 text-center text-xs">
+          <div><div class="font-bold text-slate-900">${t.pj}</div><div class="text-slate-400">PJ</div></div>
+          <div><div class="font-bold text-emerald-600">${t.pg}</div><div class="text-slate-400">G</div></div>
+          <div><div class="font-bold text-slate-500">${t.pe}</div><div class="text-slate-400">E</div></div>
+          <div><div class="font-bold text-red-500">${t.pp}</div><div class="text-slate-400">P</div></div>
+        </div>
+        <div class="mt-4">
+          <div class="flex justify-between text-xs text-slate-500 mb-1">
+            <span>Efectividad</span><span>${efectividad}%</span>
+          </div>
+          <div class="bar-outer"><div class="bar-inner" style="width:${efectividad}%"></div></div>
+        </div>
+      `;
+      card.addEventListener('click', () => abrirDetalleEquipo(t.equipo));
+      grid.appendChild(card);
+    });
+  }
+
+  // ============================================================
+  // GOLEADORES (goles por equipo)
+  // ============================================================
+  function renderGoleadores() {
+    const tabla = getTablaActual();
+    const cont = $('listaGoleadores');
+    cont.innerHTML = '';
+    const ordenado = tabla.slice().sort((a, b) => b.gf - a.gf);
+    const max = Math.max(1, ...ordenado.map(t => t.gf));
+
+    if (ordenado.length === 0 || max === 0) {
+      cont.innerHTML = '<div class="text-center text-slate-400 py-6">Aún no se han marcado goles.</div>';
+      return;
+    }
+
+    ordenado.forEach((t, i) => {
+      const pct = (t.gf / max) * 100;
+      const row = document.createElement('div');
+      row.className = 'fade-in';
+      row.innerHTML = `
+        <div class="flex items-center gap-3 mb-1">
+          <span class="badge-pos ${i === 0 ? 'p1' : i === 1 ? 'p2' : i === 2 ? 'p3' : ''}">${i + 1}</span>
+          ${escudoHTML(t)}
+          <div class="flex-1 min-w-0">
+            <div class="font-semibold truncate">${escapeHtml(t.equipo)}</div>
+            ${t.grado ? `<div class="text-xs text-slate-500 truncate">${escapeHtml(t.grado)}</div>` : ''}
+          </div>
+          <div class="font-extrabold text-emerald-600 text-lg tabular-nums">${t.gf}</div>
+        </div>
+        <div class="bar-outer ml-11"><div class="bar-inner" style="width:${pct}%"></div></div>
+      `;
+      cont.appendChild(row);
+    });
+  }
+
+  // ============================================================
+  // GOLEADORES INDIVIDUALES (por jugador)
+  // ============================================================
+  function renderGoleadoresJugadores() {
+    const cont = $('listaGoleadoresJugadores');
+    cont.innerHTML = '';
+    const { goleadores, grupos } = state.data;
+
+    let lista = goleadores.slice();
+    if (state.grupoActivo && grupos.length > 1) {
+      lista = lista.filter(g => g.grupo === state.grupoActivo);
+    }
+
+    if (lista.length === 0) {
+      cont.innerHTML = '<div class="text-center text-slate-400 py-8">Aún no hay goles registrados para este grupo.</div>';
+      return;
+    }
+
+    const max = Math.max(1, ...lista.map(g => g.goles));
+
+    lista.forEach((g, i) => {
+      const pct = (g.goles / max) * 100;
+      const equipoObj = { nombre: g.equipo, escudo: g.escudo };
+      const row = document.createElement('div');
+      row.className = 'p-3 sm:p-4 hover:bg-slate-50 transition fade-in';
+      row.innerHTML = `
+        <div class="flex items-center gap-3">
+          <span class="badge-pos ${i === 0 ? 'p1' : i === 1 ? 'p2' : i === 2 ? 'p3' : ''}">${i + 1}</span>
+          ${escudoHTML(equipoObj)}
+          <div class="flex-1 min-w-0">
+            <div class="font-semibold text-slate-900 truncate">${escapeHtml(g.jugador)}</div>
+            <div class="text-xs text-slate-500 truncate">
+              ${escapeHtml(g.equipo)}${g.grado ? ' · ' + escapeHtml(g.grado) : ''}${g.grupo ? ' · ' + escapeHtml(g.grupo) : ''}
+            </div>
+          </div>
+          <div class="text-right shrink-0">
+            <div class="font-extrabold text-amber-600 text-xl tabular-nums leading-none">${g.goles}</div>
+            <div class="text-[10px] uppercase tracking-wider text-slate-400">goles</div>
+          </div>
+        </div>
+        <div class="bar-outer mt-2 ml-11"><div class="bar-amber" style="width:${pct}%"></div></div>
+      `;
+      cont.appendChild(row);
+    });
+  }
+
+  // ============================================================
+  // ELIMINATORIA (bracket)
+  // ============================================================
+  const FASES_ORDEN = ['Octavos', 'Cuartos', 'Semifinal', 'Final'];
+
+  function renderEliminatoria() {
+    const cont = $('bracketContainer');
+    cont.innerHTML = '';
+    const { eliminatorias, grupos } = state.data;
+
+    if (!eliminatorias || eliminatorias.length === 0) {
+      cont.innerHTML = `
+        <div class="bg-white rounded-2xl border border-dashed border-slate-300 p-10 text-center">
+          <div class="text-5xl mb-3">🏅</div>
+          <h3 class="font-bold text-slate-900 text-lg mb-1">Sin fase eliminatoria</h3>
+          <p class="text-sm text-slate-500">Agrega filas a la hoja <b>Eliminatorias</b> para mostrar el bracket.</p>
+        </div>
+      `;
+      return;
+    }
+
+    // Agrupar por rama
+    const porRama = {};
+    eliminatorias.forEach(e => {
+      if (!porRama[e.rama]) porRama[e.rama] = [];
+      porRama[e.rama].push(e);
+    });
+
+    Object.keys(porRama).sort().forEach(rama => {
+      const partidos = porRama[rama];
+
+      // Fases presentes ordenadas
+      const fasesPresentes = FASES_ORDEN.filter(f => partidos.some(p => p.fase === f));
+      const terceros = partidos.filter(p => p.fase === 'Tercer Lugar');
+
+      const bloque = document.createElement('div');
+      bloque.className = 'bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden fade-in';
+
+      const colorHeader = rama.toLowerCase().indexOf('fem') !== -1
+        ? 'from-pink-600 to-rose-500'
+        : 'from-blue-700 to-emerald-600';
+
+      let html = `
+        <div class="px-4 py-3 bg-gradient-to-r ${colorHeader} text-white font-bold text-sm flex items-center gap-2">
+          <span class="text-base">🏆</span><span>${escapeHtml(rama)}</span>
+        </div>
+        <div class="p-4 sm:p-6 overflow-x-auto">
+          <div class="bracket">
+      `;
+      fasesPresentes.forEach(fase => {
+        const delFase = partidos.filter(p => p.fase === fase);
+        html += `<div class="bracket-col">
+          <div class="bracket-title">${escapeHtml(fase)}</div>
+          <div class="bracket-matches">
+            ${delFase.map(p => cardEliminatoria(p)).join('')}
+          </div>
+        </div>`;
+      });
+      html += `</div>`;
+
+      if (terceros.length > 0) {
+        html += `
+          <div class="mt-6 pt-4 border-t border-slate-100">
+            <div class="text-xs uppercase tracking-wider text-slate-500 font-bold mb-3 flex items-center gap-2">
+              <span>🥉</span><span>Tercer Lugar</span>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              ${terceros.map(p => cardEliminatoria(p)).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      html += `</div>`;
+      bloque.innerHTML = html;
+      cont.appendChild(bloque);
+    });
+  }
+
+  function cardEliminatoria(p) {
+    const jugado = p.estado === 'Jugado' && p.goles1 !== null && p.goles2 !== null;
+    const hayPenales = p.penales1 !== null && p.penales2 !== null;
+    const ganador1 = p.ganador && p.ganador === p.equipo1;
+    const ganador2 = p.ganador && p.ganador === p.equipo2;
+    const fila = (nombre, escudo, grado, goles, penales, esGanador) => {
+      if (!nombre) {
+        return `<div class="bk-team empty">
+          <span class="escudo-fallback" style="background:#cbd5e1">?</span>
+          <span class="text-slate-400 italic truncate flex-1">Por definir</span>
+          <span class="text-slate-300">—</span>
+        </div>`;
+      }
+      return `<div class="bk-team ${esGanador ? 'winner' : jugado && !esGanador ? 'loser' : ''}">
+        ${escudoHTML({ nombre, escudo })}
+        <div class="min-w-0 flex-1">
+          <div class="truncate">${escapeHtml(nombre)}</div>
+          ${grado ? `<div class="bk-grado truncate">${escapeHtml(grado)}</div>` : ''}
+        </div>
+        ${penales !== null && penales !== undefined
+          ? `<span class="text-[10px] text-slate-500">(${penales})</span>` : ''}
+        <span class="bk-score">${jugado ? goles : '—'}</span>
+      </div>`;
+    };
+    const fecha = p.fecha ? fmtFecha(p.fecha) : '';
+    const badgeEstado = jugado
+      ? (hayPenales ? '<span class="bk-badge bk-pen">Penales</span>' : '')
+      : `<span class="bk-badge bk-pendiente">${escapeHtml(p.estado || 'Pendiente')}</span>`;
+
+    return `
+      <div class="bk-match">
+        <div class="bk-match-head">
+          <span>${fecha}</span>
+          ${badgeEstado}
+        </div>
+        ${fila(p.equipo1, p.escudo1, p.grado1, p.goles1, p.penales1, ganador1)}
+        ${fila(p.equipo2, p.escudo2, p.grado2, p.goles2, p.penales2, ganador2)}
+      </div>
+    `;
+  }
+
+  // ============================================================
+  // MODAL DETALLE EQUIPO
+  // ============================================================
+  function abrirDetalleEquipo(nombre) {
+    const { tablas, partidos, config } = state.data;
+    let t = null;
+    for (const g of Object.keys(tablas)) {
+      const found = tablas[g].find(x => x.equipo === nombre);
+      if (found) { t = found; break; }
+    }
+    if (!t) return;
+
+    $('modalHeader').style.background =
+      `linear-gradient(135deg, ${config.colorPrimario || '#1e40af'}, ${config.colorSecundario || '#059669'})`;
+    $('modalHeader').innerHTML = `
+      <div class="flex items-center gap-3">
+        ${escudoHTML(t)}
+        <div class="min-w-0 flex-1">
+          <div class="text-xl font-extrabold truncate">${escapeHtml(t.equipo)}</div>
+          <div class="text-white/80 text-sm">${escapeHtml(t.grado || '')}</div>
+        </div>
+        <div class="text-right">
+          <div class="text-3xl font-black leading-none">${t.pts}</div>
+          <div class="text-[10px] uppercase tracking-widest text-white/80">PTS</div>
+        </div>
+      </div>
+      <div class="grid grid-cols-4 gap-2 mt-4 text-center">
+        <div class="bg-white/15 rounded-lg py-2"><div class="text-lg font-bold">${t.pj}</div><div class="text-[10px] uppercase text-white/70">PJ</div></div>
+        <div class="bg-white/15 rounded-lg py-2"><div class="text-lg font-bold">${t.pg}-${t.pe}-${t.pp}</div><div class="text-[10px] uppercase text-white/70">G-E-P</div></div>
+        <div class="bg-white/15 rounded-lg py-2"><div class="text-lg font-bold">${t.gf}:${t.gc}</div><div class="text-[10px] uppercase text-white/70">GF:GC</div></div>
+        <div class="bg-white/15 rounded-lg py-2"><div class="text-lg font-bold">${t.dg > 0 ? '+' : ''}${t.dg}</div><div class="text-[10px] uppercase text-white/70">DG</div></div>
+      </div>
+    `;
+
+    const partidosEquipo = partidos.filter(p => p.local === nombre || p.visitante === nombre);
+    const cuerpo = partidosEquipo.length === 0
+      ? '<div class="text-center text-slate-400 py-6">Este equipo aún no tiene partidos programados.</div>'
+      : partidosEquipo
+          .sort((a, b) => a.jornada - b.jornada)
+          .map(p => {
+            const esLocal = p.local === nombre;
+            const rival = esLocal ? p.visitante : p.local;
+            const jugado = p.estado === 'Jugado' && p.golesLocal !== null && p.golesVisitante !== null;
+            const gf = esLocal ? p.golesLocal : p.golesVisitante;
+            const gc = esLocal ? p.golesVisitante : p.golesLocal;
+            const resultado = !jugado ? 'P' : gf > gc ? 'G' : gf < gc ? 'L' : 'E';
+            const colorCls = !jugado ? 'bg-slate-100 text-slate-500'
+              : resultado === 'G' ? 'bg-emerald-100 text-emerald-700'
+              : resultado === 'E' ? 'bg-slate-100 text-slate-700'
+              : 'bg-red-100 text-red-700';
+            const letra = !jugado ? '·' : resultado === 'G' ? 'G' : resultado === 'L' ? 'P' : 'E';
+            return `
+              <div class="flex items-center gap-3 py-2 border-b border-slate-100 last:border-0">
+                <div class="text-xs text-slate-400 w-14 shrink-0">J${p.jornada}</div>
+                <span class="w-7 h-7 rounded-full font-bold text-xs inline-flex items-center justify-center ${colorCls}">${letra}</span>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm truncate"><span class="text-slate-400 text-xs">${esLocal ? 'vs' : '@'}</span> ${escapeHtml(rival)}</div>
+                  <div class="text-[10px] text-slate-400">${fmtFecha(p.fecha)}</div>
+                </div>
+                <div class="text-sm font-bold tabular-nums">${jugado ? gf + ' - ' + gc : '—'}</div>
+              </div>
+            `;
+          }).join('');
+
+    $('modalBody').innerHTML = `
+      <h3 class="font-bold text-slate-900 mb-2">Historial de partidos</h3>
+      <div>${cuerpo}</div>
+    `;
+
+    $('modal').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function cerrarModal() {
+    $('modal').classList.add('hidden');
+    document.body.style.overflow = '';
+  }
+
+  // ============================================================
+  // EVENTOS GLOBALES
+  // ============================================================
+  function initEventos() {
+    // Tabs
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-active'));
+        btn.classList.add('tab-active');
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+        const panel = $('tab-' + btn.dataset.tab);
+        panel.classList.remove('hidden');
+        panel.classList.remove('fade-in');
+        void panel.offsetWidth;
+        panel.classList.add('fade-in');
+      });
+    });
+
+    // Sort
+    document.querySelectorAll('.sortable').forEach(th => {
+      th.addEventListener('click', () => {
+        const campo = th.dataset.sort;
+        if (state.orden.campo === campo) {
+          state.orden.dir = state.orden.dir === 'desc' ? 'asc' : 'desc';
+        } else {
+          state.orden.campo = campo;
+          state.orden.dir = 'desc';
+        }
+        renderTabla();
+      });
+    });
+
+    // Filtro equipo
+    $('filtroEquipo').addEventListener('input', (e) => {
+      state.filtroEquipo = e.target.value;
+      renderTabla();
+    });
+
+    // Refresh
+    $('btnRefresh').addEventListener('click', () => cargar(true));
+
+    // Modal
+    $('btnCerrarModal').addEventListener('click', cerrarModal);
+    $('modalBg').addEventListener('click', cerrarModal);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarModal(); });
+  }
+
+  // ============================================================
+  // START
+  // ============================================================
+  document.addEventListener('DOMContentLoaded', () => {
+    initEventos();
+    cargar(false);
+  });
+})();
+</script>
